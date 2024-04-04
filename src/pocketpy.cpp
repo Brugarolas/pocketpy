@@ -627,6 +627,7 @@ void init_builtins(VM* _vm) {
         const Str& self = _CAST(Str&, args[0]);
         const Str& value = CAST(Str&, args[1]);
         int start = CAST(int, args[2]);
+        if (start < 0) vm->ValueError("argument 'start' can't be negative");
         int index = self.index(value, start);
         if(index < 0) vm->ValueError("substring not found");
         return VAR(index);
@@ -636,6 +637,7 @@ void init_builtins(VM* _vm) {
         const Str& self = _CAST(Str&, args[0]);
         const Str& value = CAST(Str&, args[1]);
         int start = CAST(int, args[2]);
+		if (start < 0) vm->ValueError("argument 'start' can't be negative");
         return VAR(self.index(value, start));
     });
 
@@ -734,6 +736,7 @@ void init_builtins(VM* _vm) {
         int delta = width - self.u8_length();
         if(delta <= 0) return args[0];
         const Str& fillchar = CAST(Str&, args[2]);
+        if (fillchar.u8_length() != 1) vm->TypeError("The fill character must be exactly one character long");
         SStream ss;
         ss << self;
         for(int i=0; i<delta; i++) ss << fillchar;
@@ -747,6 +750,7 @@ void init_builtins(VM* _vm) {
         int delta = width - self.u8_length();
         if(delta <= 0) return args[0];
         const Str& fillchar = CAST(Str&, args[2]);
+        if (fillchar.u8_length() != 1) vm->TypeError("The fill character must be exactly one character long");
         SStream ss;
         for(int i=0; i<delta; i++) ss << fillchar;
         ss << self;
