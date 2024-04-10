@@ -82,6 +82,9 @@ struct PyTypeInfo{
     void (*m__setattr__)(VM* vm, PyObject*, StrName, PyObject*) = nullptr;
     PyObject* (*m__getattr__)(VM* vm, PyObject*, StrName) = nullptr;
     bool (*m__delattr__)(VM* vm, PyObject*, StrName) = nullptr;
+
+    // backdoors
+    void (*on_end_subclass)(VM* vm, PyTypeInfo*) = nullptr;
 };
 
 typedef void(*PrintFunc)(const char*, int);
@@ -123,7 +126,7 @@ public:
     std::map<std::string_view, CodeObject_> _cached_codes;
 
     // typeid -> Type
-    std::map<const std::type_info*, Type> _cxx_typeid_map;
+    std::map<const std::type_index, Type> _cxx_typeid_map;
 
     void (*_ceval_on_step)(VM*, Frame*, Bytecode bc) = nullptr;
 
@@ -436,7 +439,7 @@ public:
 
     template<typename T>
     Type _find_type_in_cxx_typeid_map(){
-        auto it = _cxx_typeid_map.find(&typeid(T));
+        auto it = _cxx_typeid_map.find(typeid(T));
         if(it == _cxx_typeid_map.end()){
     #if __GNUC__ || __clang__
             throw std::runtime_error(__PRETTY_FUNCTION__ + std::string(" failed: T not found"));
@@ -501,7 +504,8 @@ PyObject* py_var(VM* vm, __T&& value){
         }
     }else if constexpr(is_floating_point_v<T>){
         // float
-        return tag_float(static_cast<f64>(std::forward<__T>(value)));
+        f64 val = static_cast<f64>(std::forward<__T>(value));
+        return vm->heap.gcnew<f64>(vm->tp_float, val);
     }else if constexpr(std::is_pointer_v<T>){
         return from_void_p(vm, (void*)value);
     }else{
@@ -550,7 +554,7 @@ __T _py_cast__internal(VM* vm, PyObject* obj) {
     }else if constexpr(is_floating_point_v<T>){
         static_assert(!std::is_reference_v<__T>);
         // float
-        if(is_float(obj)) return untag_float(obj);
+        if(is_float(obj)) return PK_OBJ_GET(f64, obj);
         i64 bits;
         if(try_cast_int(obj, &bits)) return (float)bits;
         vm->TypeError("expected 'int' or 'float', got " + _type_name(vm, vm->_tp(obj)).escape());

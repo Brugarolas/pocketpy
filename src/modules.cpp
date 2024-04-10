@@ -166,7 +166,7 @@ void add_module_math(VM* vm){
     vm->bind_func<2>(mod, "isclose", [](VM* vm, ArgsView args) {
         f64 a = CAST_F(args[0]);
         f64 b = CAST_F(args[1]);
-        return VAR(std::fabs(a - b) <= Number::kEpsilon);
+        return VAR(std::fabs(a - b) < 1e-9);
     });
 
     vm->bind_func<1>(mod, "exp", PK_LAMBDA(VAR(std::exp(CAST_F(args[0])))));
@@ -313,6 +313,25 @@ _LpGuard::~_LpGuard(){
 void add_module_line_profiler(VM *vm){
     PyObject* mod = vm->new_module("line_profiler");
     LineProfilerW::register_class(vm, mod);
+}
+
+
+void add_module_enum(VM* vm){
+    PyObject* mod = vm->new_module("enum");
+    CodeObject_ code = vm->compile(kPythonLibs__enum, "enum.py", EXEC_MODE);
+    vm->_exec(code, mod);
+    PyObject* Enum = mod->attr("Enum");
+    vm->_all_types[PK_OBJ_GET(Type, Enum).index].on_end_subclass = \
+        [](VM* vm, PyTypeInfo* new_ti){
+            new_ti->subclass_enabled = false;    // Enum class cannot be subclassed twice
+            NameDict& attr = new_ti->obj->attr();
+            for(auto [k, v]: attr.items()){
+                // wrap every attribute
+                std::string_view k_sv = k.sv();
+                if(k_sv.empty() || k_sv[0] == '_') continue;
+                attr.set(k, vm->call(new_ti->obj, VAR(k_sv), v));
+            }
+        };
 }
 
 }   // namespace pkpy

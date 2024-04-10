@@ -30,13 +30,15 @@ PyObject* PyArrayGetItem(VM* vm, PyObject* _0, PyObject* _1){
 void init_builtins(VM* _vm) {
 #define BIND_NUM_ARITH_OPT(name, op)                                                                    \
     _vm->bind##name(VM::tp_int, [](VM* vm, PyObject* lhs, PyObject* rhs) {                              \
-        if(is_int(rhs)) return VAR(_CAST(i64, lhs) op _CAST(i64, rhs));                                 \
+        i64 val;                                                                                        \
+        if(try_cast_int(rhs, &val)) return VAR(_CAST(i64, lhs) op val);                                 \
         if(is_float(rhs)) return VAR(_CAST(i64, lhs) op _CAST(f64, rhs));                               \
         return vm->NotImplemented;                                                                      \
     });                                                                                                 \
-    _vm->bind##name(VM::tp_float, [](VM* vm, PyObject* lhs, PyObject* rhs) {                           \
+    _vm->bind##name(VM::tp_float, [](VM* vm, PyObject* lhs, PyObject* rhs) {                            \
+        i64 val;                                                                                        \
+        if(try_cast_int(rhs, &val)) return VAR(_CAST(f64, lhs) op val);                                 \
         if(is_float(rhs)) return VAR(_CAST(f64, lhs) op _CAST(f64, rhs));                               \
-        if(is_int(rhs)) return VAR(_CAST(f64, lhs) op _CAST(i64, rhs));                                 \
         return vm->NotImplemented;                                                                      \
     });
 
@@ -572,7 +574,7 @@ void init_builtins(VM* _vm) {
 #undef BIND_CMP_STR
 
     _vm->bind__getitem__(VM::tp_str, [](VM* vm, PyObject* _0, PyObject* _1) {
-        const Str& self = _CAST(Str&, _0);
+        const Str& self = PK_OBJ_GET(Str, _0);
         if(is_non_tagged_type(_1, vm->tp_slice)){
             const Slice& s = _CAST(Slice&, _1);
             int start, stop, step;
@@ -627,6 +629,7 @@ void init_builtins(VM* _vm) {
         const Str& self = _CAST(Str&, args[0]);
         const Str& value = CAST(Str&, args[1]);
         int start = CAST(int, args[2]);
+        if (start < 0) vm->ValueError("argument 'start' can't be negative");
         int index = self.index(value, start);
         if(index < 0) vm->ValueError("substring not found");
         return VAR(index);
@@ -636,6 +639,7 @@ void init_builtins(VM* _vm) {
         const Str& self = _CAST(Str&, args[0]);
         const Str& value = CAST(Str&, args[1]);
         int start = CAST(int, args[2]);
+		if (start < 0) vm->ValueError("argument 'start' can't be negative");
         return VAR(self.index(value, start));
     });
 
@@ -734,6 +738,7 @@ void init_builtins(VM* _vm) {
         int delta = width - self.u8_length();
         if(delta <= 0) return args[0];
         const Str& fillchar = CAST(Str&, args[2]);
+        if (fillchar.u8_length() != 1) vm->TypeError("The fill character must be exactly one character long");
         SStream ss;
         ss << self;
         for(int i=0; i<delta; i++) ss << fillchar;
@@ -747,6 +752,7 @@ void init_builtins(VM* _vm) {
         int delta = width - self.u8_length();
         if(delta <= 0) return args[0];
         const Str& fillchar = CAST(Str&, args[2]);
+        if (fillchar.u8_length() != 1) vm->TypeError("The fill character must be exactly one character long");
         SStream ss;
         for(int i=0; i<delta; i++) ss << fillchar;
         ss << self;
@@ -1086,9 +1092,20 @@ void init_builtins(VM* _vm) {
         return VAR(Bytes(buffer, list.size()));
     });
 
-    _vm->bind__getitem__(VM::tp_bytes, [](VM* vm, PyObject* obj, PyObject* index) {
-        const Bytes& self = _CAST(Bytes&, obj);
-        i64 i = CAST(i64, index);
+    _vm->bind__getitem__(VM::tp_bytes, [](VM* vm, PyObject* _0, PyObject* _1) {
+        const Bytes& self = PK_OBJ_GET(Bytes, _0);
+        if(is_non_tagged_type(_1, vm->tp_slice)){
+            const Slice& s = _CAST(Slice&, _1);
+            int start, stop, step;
+            vm->parse_int_slice(s, self.size(), start, stop, step);
+            int guess_max_size = abs(stop - start) / abs(step) + 1;
+            if(guess_max_size > self.size()) guess_max_size = self.size();
+            unsigned char* buffer = new unsigned char[guess_max_size];
+            int j = 0;      // actual size
+            PK_SLICE_LOOP(i, start, stop, step) buffer[j++] = self[i];
+            return VAR(Bytes(buffer, j));
+        }
+        i64 i = CAST(i64, _1);
         i = vm->normalized_index(i, self.size());
         return VAR(self[i]);
     });
@@ -1614,6 +1631,7 @@ void VM::post_init(){
     add_module_collections(this);
     add_module_array2d(this);
     add_module_line_profiler(this);
+    add_module_enum(this);
 
 #ifdef PK_USE_CJSON
     add_module_cjson(this);
