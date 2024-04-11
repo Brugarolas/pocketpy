@@ -25,7 +25,7 @@ namespace pkpy{
             dict.apply([&](PyObject* k, PyObject* v){
                 if(!first) ss << ", ";
                 first = false;
-                if(!is_non_tagged_type(k, vm->tp_str)){
+                if(!is_type(k, VM::tp_str)){
                     vm->TypeError(_S("json keys must be string, got ", _type_name(vm, vm->_tp(k))));
                 }
                 ss << _CAST(Str&, k).escape(false) << ": ";
@@ -108,10 +108,10 @@ namespace pkpy{
     }
 
     std::pair<PyObject**, int> VM::_cast_array(PyObject* obj){
-        if(is_non_tagged_type(obj, VM::tp_list)){
+        if(is_type(obj, VM::tp_list)){
             List& list = PK_OBJ_GET(List, obj);
             return {list.data(), list.size()};
-        }else if(is_non_tagged_type(obj, VM::tp_tuple)){
+        }else if(is_type(obj, VM::tp_tuple)){
             Tuple& tuple = PK_OBJ_GET(Tuple, obj);
             return {tuple.data(), tuple.size()};
         }
@@ -218,7 +218,6 @@ namespace pkpy{
 
     const PyTypeInfo* VM::_inst_type_info(PyObject* obj){
         if(is_int(obj)) return &_all_types[tp_int];
-        if(is_float(obj)) return &_all_types[tp_float];
         return &_all_types[obj->type];
     }
 
@@ -761,7 +760,7 @@ void VM::init_builtin_types(){
 // `heap.gc_scope_lock();` needed before calling this function
 void VM::_unpack_as_list(ArgsView args, List& list){
     for(PyObject* obj: args){
-        if(is_non_tagged_type(obj, tp_star_wrapper)){
+        if(is_type(obj, tp_star_wrapper)){
             const StarWrapper& w = _CAST(StarWrapper&, obj);
             // maybe this check should be done in the compile time
             if(w.level != 1) TypeError("expected level 1 star wrapper");
@@ -780,7 +779,7 @@ void VM::_unpack_as_list(ArgsView args, List& list){
 // `heap.gc_scope_lock();` needed before calling this function
 void VM::_unpack_as_dict(ArgsView args, Dict& dict){
     for(PyObject* obj: args){
-        if(is_non_tagged_type(obj, tp_star_wrapper)){
+        if(is_type(obj, tp_star_wrapper)){
             const StarWrapper& w = _CAST(StarWrapper&, obj);
             // maybe this check should be done in the compile time
             if(w.level != 2) TypeError("expected level 2 star wrapper");
@@ -891,43 +890,38 @@ PyObject* VM::vectorcall(int ARGC, int KWARGC, bool op_call){
         const CodeObject* co = fn.decl->code.get();
         int co_nlocals = co->varnames.size();
 
-        if(fn.decl->is_simple){
-            if(args.size() != fn.decl->args.size()){
-                TypeError(_S(
-                    co->name, "() takes ", fn.decl->args.size(), " positional arguments but ", args.size(), " were given"
-                ));
-            }
-            if(!kwargs.empty()) TypeError(_S(co->name, "() takes no keyword arguments"));
-
-            // fast path for empty function
-            if(fn.decl->is_empty){
+        switch(fn.decl->type){
+            case FuncType::UNSET: PK_FATAL_ERROR(); break;
+            case FuncType::NORMAL:
+                _prepare_py_call(buffer, args, kwargs, fn.decl);
+                // copy buffer back to stack
+                s_data.reset(_base + co_nlocals);
+                for(int j=0; j<co_nlocals; j++) _base[j] = buffer[j];
+                break;
+            case FuncType::SIMPLE:
+                if(args.size() != fn.decl->args.size()) TypeError(_S(co->name, "() takes ", fn.decl->args.size(), " positional arguments but ", args.size(), " were given"));
+                if(!kwargs.empty()) TypeError(_S(co->name, "() takes no keyword arguments"));
+                // [callable, <self>, args..., local_vars...]
+                //      ^p0                    ^p1      ^_sp
+                s_data.reset(_base + co_nlocals);
+                // initialize local variables to PY_NULL
+                for(PyObject** p=p1; p!=s_data._sp; p++) *p = PY_NULL;
+                break;
+            case FuncType::EMPTY:
+                if(args.size() != fn.decl->args.size()) TypeError(_S(co->name, "() takes ", fn.decl->args.size(), " positional arguments but ", args.size(), " were given"));
+                if(!kwargs.empty()) TypeError(_S(co->name, "() takes no keyword arguments"));
                 s_data.reset(p0);
                 return None;
-            }
+            case FuncType::GENERATOR:
+                _prepare_py_call(buffer, args, kwargs, fn.decl);
+                s_data.reset(p0);
+                return _py_generator(
+                    Frame(nullptr, co, fn._module, callable, nullptr),
+                    ArgsView(buffer, buffer + co_nlocals)
+                );
+        };
 
-            // [callable, <self>, args..., local_vars...]
-            //      ^p0                    ^p1      ^_sp
-            s_data.reset(_base + co_nlocals);
-            // initialize local variables to PY_NULL
-            for(PyObject** p=p1; p!=s_data._sp; p++) *p = PY_NULL;
-            goto __FAST_CALL;
-        }
-
-        _prepare_py_call(buffer, args, kwargs, fn.decl);
-        
-        if(co->is_generator){
-            s_data.reset(p0);
-            return _py_generator(
-                Frame(nullptr, co, fn._module, callable, nullptr),
-                ArgsView(buffer, buffer + co_nlocals)
-            );
-        }
-
-        // copy buffer back to stack
-        s_data.reset(_base + co_nlocals);
-        for(int j=0; j<co_nlocals; j++) _base[j] = buffer[j];
-
-__FAST_CALL:
+        // simple or normal
         callstack.emplace(p0, co, fn._module, callable, args.begin());
         if(op_call) return PY_OP_CALL;
         return _run_top_frame();
@@ -1016,7 +1010,7 @@ void VM::delattr(PyObject *_0, StrName _name){
 PyObject* VM::getattr(PyObject* obj, StrName name, bool throw_err){
     Type objtype(0);
     // handle super() proxy
-    if(is_non_tagged_type(obj, tp_super)){
+    if(is_type(obj, tp_super)){
         const Super& super = PK_OBJ_GET(Super, obj);
         obj = super.first;
         objtype = super.second;
@@ -1026,7 +1020,7 @@ PyObject* VM::getattr(PyObject* obj, StrName name, bool throw_err){
     PyObject* cls_var = find_name_in_mro(objtype, name);
     if(cls_var != nullptr){
         // handle descriptor
-        if(is_non_tagged_type(cls_var, tp_property)){
+        if(is_type(cls_var, tp_property)){
             const Property& prop = PK_OBJ_GET(Property, cls_var);
             return call(prop.getter, obj);
         }
@@ -1080,7 +1074,7 @@ PyObject* VM::get_unbound_method(PyObject* obj, StrName name, PyObject** self, b
     *self = PY_NULL;
     Type objtype(0);
     // handle super() proxy
-    if(is_non_tagged_type(obj, tp_super)){
+    if(is_type(obj, tp_super)){
         const Super& super = PK_OBJ_GET(Super, obj);
         obj = super.first;
         objtype = super.second;
@@ -1092,7 +1086,7 @@ PyObject* VM::get_unbound_method(PyObject* obj, StrName name, PyObject** self, b
     if(fallback){
         if(cls_var != nullptr){
             // handle descriptor
-            if(is_non_tagged_type(cls_var, tp_property)){
+            if(is_type(cls_var, tp_property)){
                 const Property& prop = PK_OBJ_GET(Property, cls_var);
                 return call(prop.getter, obj);
             }
@@ -1148,7 +1142,7 @@ PyObject* VM::get_unbound_method(PyObject* obj, StrName name, PyObject** self, b
 void VM::setattr(PyObject* obj, StrName name, PyObject* value){
     Type objtype(0);
     // handle super() proxy
-    if(is_non_tagged_type(obj, tp_super)){
+    if(is_type(obj, tp_super)){
         Super& super = PK_OBJ_GET(Super, obj);
         obj = super.first;
         objtype = super.second;
@@ -1158,7 +1152,7 @@ void VM::setattr(PyObject* obj, StrName name, PyObject* value){
     PyObject* cls_var = find_name_in_mro(objtype, name);
     if(cls_var != nullptr){
         // handle descriptor
-        if(is_non_tagged_type(cls_var, tp_property)){
+        if(is_type(cls_var, tp_property)){
             const Property& prop = _CAST(Property&, cls_var);
             if(prop.setter != vm->None){
                 call(prop.setter, obj, value);
