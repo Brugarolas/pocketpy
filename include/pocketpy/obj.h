@@ -40,8 +40,7 @@ struct ClassMethod{
 struct Property{
     PyObject* getter;
     PyObject* setter;
-    Str signature;
-    Property(PyObject* getter, PyObject* setter, Str signature) : getter(getter), setter(setter), signature(signature) {}
+    Property(PyObject* getter, PyObject* setter) : getter(getter), setter(setter) {}
 };
 
 struct Range {
@@ -180,7 +179,7 @@ struct Py_ final: PyObject {
 struct MappingProxy{
     PyObject* obj;
     MappingProxy(PyObject* obj) : obj(obj) {}
-    NameDict& attr() noexcept { return obj->attr(); }
+    NameDict& attr() { return obj->attr(); }
 };
 
 #define PK_OBJ_GET(T, obj) (((Py_<T>*)(obj))->_value)

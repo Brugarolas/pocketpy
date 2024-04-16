@@ -176,11 +176,8 @@ void add_module_os(VM* vm){
         std::filesystem::directory_iterator di;
         try{
             di = std::filesystem::directory_iterator(path);
-        }catch(std::filesystem::filesystem_error& e){
-            std::string msg = e.what();
-            auto pos = msg.find_last_of(":");
-            if(pos != std::string::npos) msg = msg.substr(pos + 1);
-            vm->IOError(Str(msg).lstrip());
+        }catch(std::filesystem::filesystem_error&){
+            vm->IOError(path.string());
         }
         List ret;
         for(auto& p: di) ret.push_back(VAR(p.path().filename().string()));
@@ -225,6 +222,23 @@ void add_module_os(VM* vm){
     vm->bind_func<1>(path_obj, "basename", [](VM* vm, ArgsView args){
         std::filesystem::path path(CAST(Str&, args[0]).sv());
         return VAR(path.filename().string());
+    });
+
+    vm->bind_func<1>(path_obj, "isdir", [](VM* vm, ArgsView args){
+        std::filesystem::path path(CAST(Str&, args[0]).sv());
+        bool isdir = std::filesystem::is_directory(path);
+        return VAR(isdir);
+    });
+
+    vm->bind_func<1>(path_obj, "isfile", [](VM* vm, ArgsView args){
+        std::filesystem::path path(CAST(Str&, args[0]).sv());
+        bool isfile = std::filesystem::is_regular_file(path);
+        return VAR(isfile);
+    });
+
+    vm->bind_func<1>(path_obj, "abspath", [](VM* vm, ArgsView args){
+        std::filesystem::path path(CAST(Str&, args[0]).sv());
+        return VAR(std::filesystem::absolute(path).string());
     });
 }
 #else
