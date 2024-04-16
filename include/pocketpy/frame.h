@@ -84,7 +84,7 @@ struct Frame {
     PyObject* _callable;    // a function object or nullptr (global scope)
     FastLocals _locals;
 
-    NameDict& f_globals() noexcept { return _module->attr(); }
+    NameDict& f_globals() { return _module->attr(); }
     PyObject* f_closure_try_get(StrName name);
 
     // function scope
@@ -116,6 +116,8 @@ struct Frame {
     bool jump_to_exception_handler(ValueStack*);
     int _exit_block(ValueStack*, int);
     void jump_abs_break(ValueStack*, int);
+
+    int curr_lineno() const { return co->lines[_ip].lineno; }
 
     void _gc_mark() const {
         PK_OBJ_MARK(_module);

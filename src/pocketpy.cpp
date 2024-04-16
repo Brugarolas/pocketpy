@@ -72,6 +72,11 @@ void init_builtins(VM* _vm) {
 #undef BIND_NUM_LOGICAL_OPT
 
     // builtin functions
+    _vm->bind_func<0>(_vm->builtins, "breakpoint", [](VM* vm, ArgsView args) {
+        vm->_next_breakpoint = NextBreakpoint(vm->callstack.size(), vm->top_frame()->curr_lineno(), false);
+        return vm->None;
+    });
+
     _vm->bind_func<-1>(_vm->builtins, "super", [](VM* vm, ArgsView args) {
         PyObject* class_arg = nullptr;
         PyObject* self_arg = nullptr;
@@ -206,6 +211,22 @@ void init_builtins(VM* _vm) {
         PyObject* obj = PK_OBJ_GET(MappingProxy, globals).obj;
         vm->_exec(code, obj);
         return vm->None;
+    });
+
+    _vm->bind(_vm->builtins, "compile(source: str, filename: str, mode: str) -> str", [](VM* vm, ArgsView args) {
+        const Str& source = CAST(Str&, args[0]);
+        const Str& filename = CAST(Str&, args[1]);
+        const Str& mode = CAST(Str&, args[2]);
+        if(mode == "exec"){
+            return VAR(vm->precompile(source, filename, EXEC_MODE));
+        }else if(mode == "eval"){
+            return VAR(vm->precompile(source, filename, EVAL_MODE));
+        }else if(mode == "single"){
+            return VAR(vm->precompile(source, filename, CELL_MODE));
+        }else{
+            vm->ValueError("compile() mode must be 'exec', 'eval' or 'single'");
+            return vm->None;
+        }
     });
 
     _vm->bind(_vm->builtins, "exit(code=0)", [](VM* vm, ArgsView args) {
@@ -427,7 +448,7 @@ void init_builtins(VM* _vm) {
             sv.remove_prefix(1);
         }
         i64 val;
-        if(parse_int(sv, &val, base) != IntParsingResult::Success){
+        if(parse_uint(sv, &val, base) != IntParsingResult::Success){
             vm->ValueError(_S("invalid literal for int() with base ", base, ": ", s.escape()));
         }
         if(negative) val = -val;
@@ -1434,42 +1455,25 @@ void init_builtins(VM* _vm) {
     // tp_property
     _vm->bind_constructor<-1>(_vm->_t(VM::tp_property), [](VM* vm, ArgsView args) {
         if(args.size() == 1+1){
-            return VAR(Property(args[1], vm->None, ""));
+            return VAR(Property(args[1], vm->None));
         }else if(args.size() == 1+2){
-            return VAR(Property(args[1], args[2], ""));
-        }else if(args.size() == 1+3){
-            return VAR(Property(args[1], args[2], CAST(Str, args[3])));
+            return VAR(Property(args[1], args[2]));
         }
-        vm->TypeError("property() takes at most 3 arguments");
+        vm->TypeError("property() takes at most 2 arguments");
         return vm->None;
-    });
-
-    // properties
-    _vm->bind_property(_vm->_t(VM::tp_property), "__signature__", [](VM* vm, ArgsView args){
-        Property& self = _CAST(Property&, args[0]);
-        return VAR(self.signature);
     });
     
     _vm->bind_property(_vm->_t(VM::tp_function), "__doc__", [](VM* vm, ArgsView args) {
         Function& func = _CAST(Function&, args[0]);
+        if(!func.decl->docstring) return vm->None;
         return VAR(func.decl->docstring);
     });
 
     _vm->bind_property(_vm->_t(VM::tp_native_func), "__doc__", [](VM* vm, ArgsView args) {
         NativeFunc& func = _CAST(NativeFunc&, args[0]);
-        if(func.decl != nullptr) return VAR(func.decl->docstring);
-        return VAR("");
-    });
-
-    _vm->bind_property(_vm->_t(VM::tp_function), "__signature__", [](VM* vm, ArgsView args) {
-        Function& func = _CAST(Function&, args[0]);
-        return VAR(func.decl->signature);
-    });
-
-    _vm->bind_property(_vm->_t(VM::tp_native_func), "__signature__", [](VM* vm, ArgsView args) {
-        NativeFunc& func = _CAST(NativeFunc&, args[0]);
-        if(func.decl != nullptr) return VAR(func.decl->signature);
-        return VAR("");
+        if(func.decl == nullptr) return vm->None;
+        if(!func.decl->docstring) return vm->None;
+        return VAR(func.decl->docstring);
     });
 
     // tp_exception
@@ -1606,6 +1610,7 @@ void VM::post_init(){
     _lazy_modules["typing"] = kPythonLibs_typing;
     _lazy_modules["datetime"] = kPythonLibs_datetime;
     _lazy_modules["cmath"] = kPythonLibs_cmath;
+    _lazy_modules["itertools"] = kPythonLibs_itertools;
 
     try{
         CodeObject_ code = compile(kPythonLibs_builtins, "<builtins>", EXEC_MODE);
@@ -1643,9 +1648,16 @@ CodeObject_ VM::compile(std::string_view source, const Str& filename, CompileMod
     try{
         return compiler.compile();
     }catch(const Exception& e){
-#if PK_DEBUG_FULL_EXCEPTION
-        std::cerr << e.summary() << std::endl;
-#endif
+        _error(e.self());
+        return nullptr;
+    }
+}
+
+Str VM::precompile(std::string_view source, const Str& filename, CompileMode mode){
+    Compiler compiler(this, source, filename, mode, false);
+    try{
+        return compiler.precompile();
+    }catch(const Exception& e){
         _error(e.self());
         return nullptr;
     }

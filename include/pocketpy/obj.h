@@ -40,8 +40,7 @@ struct ClassMethod{
 struct Property{
     PyObject* getter;
     PyObject* setter;
-    Str signature;
-    Property(PyObject* getter, PyObject* setter, Str signature) : getter(getter), setter(setter), signature(signature) {}
+    Property(PyObject* getter, PyObject* setter) : getter(getter), setter(setter) {}
 };
 
 struct Range {
@@ -149,8 +148,7 @@ inline bool is_type(PyObject* obj, Type type) {
 #if PK_DEBUG_EXTRA_CHECK
     if(obj == nullptr) throw std::runtime_error("is_type() called with nullptr");
 #endif
-    if(type.index == kTpIntIndex) return is_int(obj);
-    return !is_tagged(obj) && obj->type == type;
+    return is_small_int(obj) ? type.index == kTpIntIndex : obj->type == type;
 }
 
 [[deprecated("use is_type() instead")]]
@@ -181,7 +179,7 @@ struct Py_ final: PyObject {
 struct MappingProxy{
     PyObject* obj;
     MappingProxy(PyObject* obj) : obj(obj) {}
-    NameDict& attr() noexcept { return obj->attr(); }
+    NameDict& attr() { return obj->attr(); }
 };
 
 #define PK_OBJ_GET(T, obj) (((Py_<T>*)(obj))->_value)

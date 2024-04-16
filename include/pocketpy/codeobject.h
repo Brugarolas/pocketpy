@@ -112,8 +112,7 @@ struct FuncDecl {
     int starred_kwarg = -1;     // index in co->varnames, -1 if no **kwarg
     bool nested = false;        // whether this function is nested
 
-    Str signature;              // signature of this function
-    Str docstring;              // docstring of this function
+    const char* docstring;      // docstring of this function (weak ref)
 
     FuncType type = FuncType::UNSET;
 
@@ -173,7 +172,7 @@ struct NativeFunc {
     NativeFunc(NativeFuncC f, FuncDecl_ decl);
 
     void check_size(VM* vm, ArgsView args) const;
-    PyObject* call(VM* vm, ArgsView args) const;
+    PyObject* call(VM* vm, ArgsView args) const { return f(vm, args); }
 };
 
 struct Function{
