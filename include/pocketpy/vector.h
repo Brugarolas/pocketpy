@@ -5,13 +5,13 @@
 
 namespace pkpy{
 
-template<typename T>
+template<typename T, int Growth=2>
 struct pod_vector{
     static constexpr int SizeT = sizeof(T);
     static constexpr int N = 64 / SizeT;
 
     // static_assert(64 % SizeT == 0);
-    static_assert(is_pod<T>::value);
+    static_assert(is_pod_v<T>);
     static_assert(N >= 4);
 
     int _size;
@@ -60,13 +60,13 @@ struct pod_vector{
 
     template<typename __ValueT>
     void push_back(__ValueT&& t) {
-        if (_size == _capacity) reserve(_capacity*2);
+        if (_size == _capacity) reserve(_capacity*Growth);
         _data[_size++] = std::forward<__ValueT>(t);
     }
 
     template<typename... Args>
     void emplace_back(Args&&... args) {
-        if (_size == _capacity) reserve(_capacity*2);
+        if (_size == _capacity) reserve(_capacity*Growth);
         new (&_data[_size++]) T(std::forward<Args>(args)...);
     }
 
@@ -110,7 +110,7 @@ struct pod_vector{
 
     template<typename __ValueT>
     void insert(int i, __ValueT&& val){
-        if (_size == _capacity) reserve(_capacity*2);
+        if (_size == _capacity) reserve(_capacity*Growth);
         for(int j=_size; j>i; j--) _data[j] = _data[j-1];
         _data[i] = std::forward<__ValueT>(val);
         _size++;
@@ -394,16 +394,14 @@ namespace pkpy
         }
     };
 
-// small_vector_no_copy_and_move
-
     template<typename T, std::size_t N>
-    class small_vector_no_copy_and_move: public small_vector<T, N>
+    class small_vector_2: public small_vector<T, N>
     {
     public:
-        small_vector_no_copy_and_move() = default;
-        small_vector_no_copy_and_move(const small_vector_no_copy_and_move& other) = delete;
-        small_vector_no_copy_and_move& operator=(const small_vector_no_copy_and_move& other) = delete;
-        small_vector_no_copy_and_move(small_vector_no_copy_and_move&& other) = delete;
-        small_vector_no_copy_and_move& operator=(small_vector_no_copy_and_move&& other) = delete;
+        small_vector_2() = default;
+        small_vector_2(const small_vector_2& other) = delete;
+        small_vector_2& operator=(const small_vector_2& other) = delete;
+        small_vector_2(small_vector_2&& other) = delete;
+        small_vector_2& operator=(small_vector_2&& other) = delete;
     };
 } // namespace pkpy

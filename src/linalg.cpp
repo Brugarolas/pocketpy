@@ -17,29 +17,29 @@ namespace pkpy{
         });
 
 #define BIND_VEC_FUNCTION_0(D, name)        \
-        vm->bind_method<0>(type, #name, [](VM* vm, ArgsView args){          \
+        vm->bind_func(type, #name, 1, [](VM* vm, ArgsView args){          \
             Vec##D& self = _CAST(Vec##D&, args[0]);                     \
             return VAR(self.name());                                        \
         });
 
 #define BIND_VEC_FUNCTION_1(D, name)        \
-        vm->bind_method<1>(type, #name, [](VM* vm, ArgsView args){          \
-            Vec##D& self = _CAST(Vec##D&, args[0]);                     \
-            Vec##D& other = CAST(Vec##D&, args[1]);                     \
+        vm->bind_func(type, #name, 2, [](VM* vm, ArgsView args){          \
+            Vec##D& self = _CAST(Vec##D&, args[0]);                         \
+            Vec##D& other = CAST(Vec##D&, args[1]);                         \
             return VAR(self.name(other));                                   \
         });
 
-#define BIND_VEC_MUL_OP(D)                                                                \
+#define BIND_VEC_MUL_OP(D)                                                                  \
         vm->bind__mul__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* _0, PyObject* _1){     \
             Vec##D& self = _CAST(Vec##D&, _0);                                          \
-            if(is_type(_1, Vec##D::_type(vm))){                                \
+            if(vm->is_user_type<Vec##D>(_1)){                                               \
                 Vec##D& other = _CAST(Vec##D&, _1);                                     \
                 return VAR(self * other);                                                   \
             }                                                                               \
             f64 other = CAST(f64, _1);                                                      \
             return VAR(self * other);                                                       \
         });                                                                                 \
-        vm->bind_method<1>(type, "__rmul__", [](VM* vm, ArgsView args){                     \
+        vm->bind_func(type, "__rmul__", 2, [](VM* vm, ArgsView args){                     \
             Vec##D& self = _CAST(Vec##D&, args[0]);                                     \
             f64 other = CAST(f64, args[1]);                                                 \
             return VAR(self * other);                                                       \
@@ -117,10 +117,13 @@ static Vec2 SmoothDamp(Vec2 current, Vec2 target, Vec2& currentVelocity, float s
     void Vec2::_register(VM* vm, PyObject* mod, PyObject* type){
         PY_STRUCT_LIKE(Vec2)
 
-        vm->bind_constructor<3>(type, [](VM* vm, ArgsView args){
+        type->attr().set("ZERO", vm->new_user_object<Vec2>(0, 0));
+        type->attr().set("ONE", vm->new_user_object<Vec2>(1, 1));
+
+        vm->bind_func(type, __new__, 3, [](VM* vm, ArgsView args){
             float x = CAST_F(args[1]);
             float y = CAST_F(args[2]);
-            return vm->heap.gcnew<Vec2>(PK_OBJ_GET(Type, args[0]), Vec2(x, y));
+            return vm->heap.gcnew<Vec2>(PK_OBJ_GET(Type, args[0]), x, y);
         });
 
         // @staticmethod
@@ -146,29 +149,29 @@ static Vec2 SmoothDamp(Vec2 current, Vec2 target, Vec2& currentVelocity, float s
             return VAR(val);
         }, {}, BindType::STATICMETHOD);
 
-        vm->bind__repr__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* obj){
+        vm->bind__repr__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* obj) -> Str{
             Vec2 self = _CAST(Vec2&, obj);
             SStream ss;
             ss.setprecision(3);
             ss << "vec2(" << self.x << ", " << self.y << ")";
-            return VAR(ss.str());
+            return ss.str();
         });
 
-        vm->bind_method<1>(type, "rotate", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "rotate", 2, [](VM* vm, ArgsView args){
             Vec2 self = _CAST(Vec2&, args[0]);
             float radian = CAST(f64, args[1]);
-            return VAR_T(Vec2, self.rotate(radian));
+            return vm->new_user_object<Vec2>(self.rotate(radian));
         });
 
-        vm->bind_method<1>(type, "rotate_", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "rotate_", 2, [](VM* vm, ArgsView args){
             Vec2& self = _CAST(Vec2&, args[0]);
             float radian = CAST(f64, args[1]);
             self = self.rotate(radian);
             return vm->None;
         });
 
-        PY_FIELD(Vec2, "x", _, x)
-        PY_FIELD(Vec2, "y", _, y)
+        PY_FIELD(Vec2, "x", x)
+        PY_FIELD(Vec2, "y", y)
 
         BIND_VEC_VEC_OP(2, __add__, +)
         BIND_VEC_VEC_OP(2, __sub__, -)
@@ -187,24 +190,27 @@ static Vec2 SmoothDamp(Vec2 current, Vec2 target, Vec2& currentVelocity, float s
     void Vec3::_register(VM* vm, PyObject* mod, PyObject* type){
         PY_STRUCT_LIKE(Vec3)
 
-        vm->bind_constructor<4>(type, [](VM* vm, ArgsView args){
+        type->attr().set("ZERO", vm->new_user_object<Vec3>(0, 0, 0));
+        type->attr().set("ONE", vm->new_user_object<Vec3>(1, 1, 1));
+
+        vm->bind_func(type, __new__, 4, [](VM* vm, ArgsView args){
             float x = CAST_F(args[1]);
             float y = CAST_F(args[2]);
             float z = CAST_F(args[3]);
-            return vm->heap.gcnew<Vec3>(PK_OBJ_GET(Type, args[0]), Vec3(x, y, z));
+            return vm->heap.gcnew<Vec3>(PK_OBJ_GET(Type, args[0]), x, y, z);
         });
 
-        vm->bind__repr__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* obj){
+        vm->bind__repr__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* obj) -> Str{
             Vec3 self = _CAST(Vec3&, obj);
             SStream ss;
             ss.setprecision(3);
             ss << "vec3(" << self.x << ", " << self.y << ", " << self.z << ")";
-            return VAR(ss.str());
+            return ss.str();
         });
 
-        PY_FIELD(Vec3, "x", _, x)
-        PY_FIELD(Vec3, "y", _, y)
-        PY_FIELD(Vec3, "z", _, z)
+        PY_FIELD(Vec3, "x", x)
+        PY_FIELD(Vec3, "y", y)
+        PY_FIELD(Vec3, "z", z)
 
         BIND_VEC_VEC_OP(3, __add__, +)
         BIND_VEC_VEC_OP(3, __sub__, -)
@@ -222,26 +228,29 @@ static Vec2 SmoothDamp(Vec2 current, Vec2 target, Vec2& currentVelocity, float s
     void Vec4::_register(VM* vm, PyObject* mod, PyObject* type){
         PY_STRUCT_LIKE(Vec4)
 
-        vm->bind_constructor<1+4>(type, [](VM* vm, ArgsView args){
+        type->attr().set("ZERO", vm->new_user_object<Vec4>(0, 0, 0, 0));
+        type->attr().set("ONE", vm->new_user_object<Vec4>(1, 1, 1, 1));
+
+        vm->bind_func(type, __new__, 5, [](VM* vm, ArgsView args){
             float x = CAST_F(args[1]);
             float y = CAST_F(args[2]);
             float z = CAST_F(args[3]);
             float w = CAST_F(args[4]);
-            return vm->heap.gcnew<Vec4>(PK_OBJ_GET(Type, args[0]), Vec4(x, y, z, w));
+            return vm->heap.gcnew<Vec4>(PK_OBJ_GET(Type, args[0]), x, y, z, w);
         });
 
-        vm->bind__repr__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* obj){
+        vm->bind__repr__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* obj) -> Str{
             Vec4 self = _CAST(Vec4&, obj);
             SStream ss;
             ss.setprecision(3);
             ss << "vec4(" << self.x << ", " << self.y << ", " << self.z << ", " << self.w << ")";
-            return VAR(ss.str());
+            return ss.str();
         });
 
-        PY_FIELD(Vec4, "x", _, x)
-        PY_FIELD(Vec4, "y", _, y)
-        PY_FIELD(Vec4, "z", _, z)
-        PY_FIELD(Vec4, "w", _, w)
+        PY_FIELD(Vec4, "x", x)
+        PY_FIELD(Vec4, "y", y)
+        PY_FIELD(Vec4, "z", z)
+        PY_FIELD(Vec4, "w", w)
 
         BIND_VEC_VEC_OP(4, __add__, +)
         BIND_VEC_VEC_OP(4, __sub__, -)
@@ -264,7 +273,7 @@ static Vec2 SmoothDamp(Vec2 current, Vec2 target, Vec2& currentVelocity, float s
     void Mat3x3::_register(VM* vm, PyObject* mod, PyObject* type){
         PY_STRUCT_LIKE(Mat3x3)
 
-        vm->bind_func<-1>(type, __new__, [](VM* vm, ArgsView args){
+        vm->bind_func(type, __new__, -1, [](VM* vm, ArgsView args){
             if(args.size() == 1+0) return vm->heap.gcnew<Mat3x3>(PK_OBJ_GET(Type, args[0]), Mat3x3::zeros());
             if(args.size() == 1+1){
                 const List& list = CAST(List&, args[1]);
@@ -282,21 +291,21 @@ static Vec2 SmoothDamp(Vec2 current, Vec2 target, Vec2& currentVelocity, float s
             return vm->None;
         });
 
-        vm->bind_method<1>(type, "copy_", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "copy_", 2, [](VM* vm, ArgsView args){
             Mat3x3& self = _CAST(Mat3x3&, args[0]);
             const Mat3x3& other = CAST(Mat3x3&, args[1]);
             self = other;
             return vm->None;
         });
 
-        vm->bind__repr__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* obj){
+        vm->bind__repr__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* obj) -> Str{
             const Mat3x3& self = _CAST(Mat3x3&, obj);
             SStream ss;
             ss.setprecision(3);
             ss << "mat3x3([" << self._11 << ", " << self._12 << ", " << self._13 << ",\n";
             ss << "        " << self._21 << ", " << self._22 << ", " << self._23 << ",\n";
             ss << "        " << self._31 << ", " << self._32 << ", " << self._33 << "])";
-            return VAR(ss.str());
+            return ss.str();
         });
 
         vm->bind__getitem__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* obj, PyObject* index){
@@ -327,55 +336,55 @@ static Vec2 SmoothDamp(Vec2 current, Vec2 target, Vec2& currentVelocity, float s
             self.m[i][j] = CAST_F(value);
         });
 
-        PY_FIELD(Mat3x3, "_11", _, _11)
-        PY_FIELD(Mat3x3, "_12", _, _12)
-        PY_FIELD(Mat3x3, "_13", _, _13)
-        PY_FIELD(Mat3x3, "_21", _, _21)
-        PY_FIELD(Mat3x3, "_22", _, _22)
-        PY_FIELD(Mat3x3, "_23", _, _23)
-        PY_FIELD(Mat3x3, "_31", _, _31)
-        PY_FIELD(Mat3x3, "_32", _, _32)
-        PY_FIELD(Mat3x3, "_33", _, _33)
+        vm->bind_field(type, "_11", &Mat3x3::_11);
+        vm->bind_field(type, "_12", &Mat3x3::_12);
+        vm->bind_field(type, "_13", &Mat3x3::_13);
+        vm->bind_field(type, "_21", &Mat3x3::_21);
+        vm->bind_field(type, "_22", &Mat3x3::_22);
+        vm->bind_field(type, "_23", &Mat3x3::_23);
+        vm->bind_field(type, "_31", &Mat3x3::_31);
+        vm->bind_field(type, "_32", &Mat3x3::_32);
+        vm->bind_field(type, "_33", &Mat3x3::_33);
 
         vm->bind__add__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* _0, PyObject* _1){
             Mat3x3& self = _CAST(Mat3x3&, _0);
             Mat3x3& other = CAST(Mat3x3&, _1);
-            return VAR_T(Mat3x3, self + other);
+            return vm->new_user_object<Mat3x3>(self + other);
         });
 
         vm->bind__sub__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* _0, PyObject* _1){
             Mat3x3& self = _CAST(Mat3x3&, _0);
             Mat3x3& other = CAST(Mat3x3&, _1);
-            return VAR_T(Mat3x3, self - other);
+            return vm->new_user_object<Mat3x3>(self - other);
         });
 
         vm->bind__mul__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* _0, PyObject* _1){
             Mat3x3& self = _CAST(Mat3x3&, _0);
             f64 other = CAST_F(_1);
-            return VAR_T(Mat3x3, self * other);
+            return vm->new_user_object<Mat3x3>(self * other);
         });
 
-        vm->bind_method<1>(type, "__rmul__", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "__rmul__", 2, [](VM* vm, ArgsView args){
             Mat3x3& self = _CAST(Mat3x3&, args[0]);
             f64 other = CAST_F(args[1]);
-            return VAR_T(Mat3x3, self * other);
+            return vm->new_user_object<Mat3x3>(self * other);
         });
 
         vm->bind__truediv__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* _0, PyObject* _1){
             Mat3x3& self = _CAST(Mat3x3&, _0);
             f64 other = CAST_F(_1);
-            return VAR_T(Mat3x3, self / other);
+            return vm->new_user_object<Mat3x3>(self / other);
         });
 
         vm->bind__matmul__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* _0, PyObject* _1){
             Mat3x3& self = _CAST(Mat3x3&, _0);
-            if(is_type(_1, Mat3x3::_type(vm))){
+            if(vm->is_user_type<Mat3x3>(_1)){
                 const Mat3x3& other = _CAST(Mat3x3&, _1);
-                return VAR_T(Mat3x3, self.matmul(other));
+                return vm->new_user_object<Mat3x3>(self.matmul(other));
             }
-            if(is_type(_1, Vec3::_type(vm))){
+            if(vm->is_user_type<Vec3>(_1)){
                 const Vec3& other = _CAST(Vec3&, _1);
-                return VAR_T(Vec3, self.matmul(other));
+                return vm->new_user_object<Vec3>(self.matmul(other));
             }
             return vm->NotImplemented;
         });
@@ -384,7 +393,7 @@ static Vec2 SmoothDamp(Vec2 current, Vec2 target, Vec2& currentVelocity, float s
             const Mat3x3& self = _CAST(Mat3x3&, args[0]);
             const Mat3x3& other = CAST(Mat3x3&, args[1]);
             if(args[2] == vm->None){
-                return VAR_T(Mat3x3, self.matmul(other));
+                return vm->new_user_object<Mat3x3>(self.matmul(other));
             }else{
                 Mat3x3& out = CAST(Mat3x3&, args[2]);
                 out = self.matmul(other);
@@ -392,60 +401,57 @@ static Vec2 SmoothDamp(Vec2 current, Vec2 target, Vec2& currentVelocity, float s
             }
         });
 
-        vm->bind_method<0>(type, "determinant", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "determinant", 1, [](VM* vm, ArgsView args){
             Mat3x3& self = _CAST(Mat3x3&, args[0]);
             return VAR(self.determinant());
         });
 
-        vm->bind_method<0>(type, "transpose", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "transpose", 1, [](VM* vm, ArgsView args){
             Mat3x3& self = _CAST(Mat3x3&, args[0]);
-            return VAR_T(Mat3x3, self.transpose());
+            return vm->new_user_object<Mat3x3>(self.transpose());
         });
 
         vm->bind__invert__(PK_OBJ_GET(Type, type), [](VM* vm, PyObject* obj){
             Mat3x3& self = _CAST(Mat3x3&, obj);
             Mat3x3 ret;
-            bool ok = self.inverse(ret);
-            if(!ok) vm->ValueError("matrix is not invertible");
-            return VAR_T(Mat3x3, ret);
+            if(!self.inverse(ret)) vm->ValueError("matrix is not invertible");
+            return vm->new_user_object<Mat3x3>(ret);
         });
 
-        vm->bind_method<0>(type, "invert", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "inverse", 1, [](VM* vm, ArgsView args){
             Mat3x3& self = _CAST(Mat3x3&, args[0]);
             Mat3x3 ret;
-            bool ok = self.inverse(ret);
-            if(!ok) vm->ValueError("matrix is not invertible");
-            return VAR_T(Mat3x3, ret);
+            if(!self.inverse(ret)) vm->ValueError("matrix is not invertible");
+            return vm->new_user_object<Mat3x3>(ret);
         });
 
-        vm->bind_method<0>(type, "invert_", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "inverse_", 1, [](VM* vm, ArgsView args){
             Mat3x3& self = _CAST(Mat3x3&, args[0]);
             Mat3x3 ret;
-            bool ok = self.inverse(ret);
-            if(!ok) vm->ValueError("matrix is not invertible");
+            if(!self.inverse(ret)) vm->ValueError("matrix is not invertible");
             self = ret;
             return vm->None;
         });
 
-        vm->bind_method<0>(type, "transpose_", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "transpose_", 1, [](VM* vm, ArgsView args){
             Mat3x3& self = _CAST(Mat3x3&, args[0]);
             self = self.transpose();
             return vm->None;
         });
 
         // @staticmethod
-        vm->bind(type, "zeros()", [](VM* vm, ArgsView args){
-            return VAR_T(Mat3x3, Mat3x3::zeros());
+        vm->bind_func(type, "zeros", 0, [](VM* vm, ArgsView args){
+            return vm->new_user_object<Mat3x3>(Mat3x3::zeros());
         }, {}, BindType::STATICMETHOD);
 
         // @staticmethod
-        vm->bind(type, "ones()", [](VM* vm, ArgsView args){
-            return VAR_T(Mat3x3, Mat3x3::ones());
+        vm->bind_func(type, "ones", 0, [](VM* vm, ArgsView args){
+            return vm->new_user_object<Mat3x3>(Mat3x3::ones());
         }, {}, BindType::STATICMETHOD);
 
         // @staticmethod
-        vm->bind(type, "identity()", [](VM* vm, ArgsView args){
-            return VAR_T(Mat3x3, Mat3x3::identity());
+        vm->bind_func(type, "identity", 0, [](VM* vm, ArgsView args){
+            return vm->new_user_object<Mat3x3>(Mat3x3::identity());
         }, {}, BindType::STATICMETHOD);
 
         /*************** affine transformations ***************/
@@ -454,7 +460,7 @@ static Vec2 SmoothDamp(Vec2 current, Vec2 target, Vec2& currentVelocity, float s
             Vec2 t = CAST(Vec2, args[0]);
             f64 r = CAST_F(args[1]);
             Vec2 s = CAST(Vec2, args[2]);
-            return VAR_T(Mat3x3, Mat3x3::trs(t, r, s));
+            return vm->new_user_object<Mat3x3>(Mat3x3::trs(t, r, s));
         }, {}, BindType::STATICMETHOD);
 
         vm->bind(type, "copy_trs_(self, t: vec2, r: float, s: vec2)", [](VM* vm, ArgsView args){
@@ -487,48 +493,67 @@ static Vec2 SmoothDamp(Vec2 current, Vec2 target, Vec2& currentVelocity, float s
             return vm->None;
         });
 
-        vm->bind_method<0>(type, "is_affine", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "is_affine", 1, [](VM* vm, ArgsView args){
             Mat3x3& self = _CAST(Mat3x3&, args[0]);
             return VAR(self.is_affine());
         });
 
-        vm->bind_method<0>(type, "_t", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "_t", 1, [](VM* vm, ArgsView args){
             Mat3x3& self = _CAST(Mat3x3&, args[0]);
-            return VAR_T(Vec2, self._t());
+            return vm->new_user_object<Vec2>(self._t());
         });
 
-        vm->bind_method<0>(type, "_r", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "_r", 1, [](VM* vm, ArgsView args){
             Mat3x3& self = _CAST(Mat3x3&, args[0]);
             return VAR(self._r());
         });
 
-        vm->bind_method<0>(type, "_s", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "_s", 1, [](VM* vm, ArgsView args){
             Mat3x3& self = _CAST(Mat3x3&, args[0]);
-            return VAR_T(Vec2, self._s());
+            return vm->new_user_object<Vec2>(self._s());
         });
 
-        vm->bind_method<1>(type, "transform_point", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "transform_point", 2, [](VM* vm, ArgsView args){
             const Mat3x3& self = _CAST(Mat3x3&, args[0]);
             Vec2 v = CAST(Vec2, args[1]);
-            Vec2 res = Vec2(self._11 * v.x + self._12 * v.y + self._13, self._21 * v.x + self._22 * v.y + self._23);
-            return VAR_T(Vec2, res);
+            Vec2 res(self._11 * v.x + self._12 * v.y + self._13, self._21 * v.x + self._22 * v.y + self._23);
+            return vm->new_user_object<Vec2>(res);
         });
 
-        vm->bind_method<1>(type, "transform_vector", [](VM* vm, ArgsView args){
+        vm->bind_func(type, "inverse_transform_point", 2, [](VM* vm, ArgsView args){
             const Mat3x3& self = _CAST(Mat3x3&, args[0]);
             Vec2 v = CAST(Vec2, args[1]);
-            Vec2 res = Vec2(self._11 * v.x + self._12 * v.y, self._21 * v.x + self._22 * v.y);
-            return VAR_T(Vec2, res);
+            Mat3x3 inv;
+            if(!self.inverse(inv)) vm->ValueError("matrix is not invertible");
+            Vec2 res(inv._11 * v.x + inv._12 * v.y + inv._13, inv._21 * v.x + inv._22 * v.y + inv._23);
+            return vm->new_user_object<Vec2>(res);
+        });
+
+        vm->bind_func(type, "transform_vector", 2, [](VM* vm, ArgsView args){
+            const Mat3x3& self = _CAST(Mat3x3&, args[0]);
+            Vec2 v = CAST(Vec2, args[1]);
+            Vec2 res(self._11 * v.x + self._12 * v.y, self._21 * v.x + self._22 * v.y);
+            return vm->new_user_object<Vec2>(res);
+        });
+
+        vm->bind_func(type, "inverse_transform_vector", 2, [](VM* vm, ArgsView args){
+            const Mat3x3& self = _CAST(Mat3x3&, args[0]);
+            Vec2 v = CAST(Vec2, args[1]);
+            Mat3x3 inv;
+            if(!self.inverse(inv)) vm->ValueError("matrix is not invertible");
+            Vec2 res(inv._11 * v.x + inv._12 * v.y, inv._21 * v.x + inv._22 * v.y);
+            return vm->new_user_object<Vec2>(res);
         });
     }
 
 
 void add_module_linalg(VM* vm){
     PyObject* linalg = vm->new_module("linalg");
-    Vec2::register_class(vm, linalg);
-    Vec3::register_class(vm, linalg);
-    Vec4::register_class(vm, linalg);
-    Mat3x3::register_class(vm, linalg);
+
+    vm->register_user_class<Vec2>(linalg, "vec2", VM::tp_object, true);
+    vm->register_user_class<Vec3>(linalg, "vec3", VM::tp_object, true);
+    vm->register_user_class<Vec4>(linalg, "vec4", VM::tp_object, true);
+    vm->register_user_class<Mat3x3>(linalg, "mat3x3", VM::tp_object, true);
 
     PyObject* float_p = vm->_modules["c"]->attr("float_p");
     linalg->attr().set("vec2_p", float_p);

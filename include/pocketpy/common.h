@@ -16,12 +16,11 @@
 #include <algorithm>
 #include <variant>
 #include <type_traits>
-#include <random>
 #include <deque>
 #include <typeindex>
 #include <initializer_list>
 
-#define PK_VERSION				"1.4.5"
+#define PK_VERSION				"1.5.0"
 
 #include "config.h"
 #include "export.h"
@@ -71,26 +70,18 @@ namespace std = ::std;
 template <size_t T>
 struct NumberTraits;
 
-inline constexpr bool is_negative_shift_well_defined(){
-#ifdef __EMSCRIPTEN__
-	return false;
-#endif
-	// rshift does not affect the sign bit
-	return -1 >> 1 == -1;
-}
-
 template <>
 struct NumberTraits<4> {
 	using int_t = int32_t;
 	static constexpr int_t kMaxSmallInt = (1 << 28) - 1;
-	static constexpr int_t kMinSmallInt = is_negative_shift_well_defined() ? -(1 << 28) : 0;
+	static constexpr int_t kMinSmallInt = 0;
 };
 
 template <>
 struct NumberTraits<8> {
 	using int_t = int64_t;
 	static constexpr int_t kMaxSmallInt = (1ll << 60) - 1;
-	static constexpr int_t kMinSmallInt = is_negative_shift_well_defined() ? -(1ll << 60) : 0;
+	static constexpr int_t kMinSmallInt = 0;
 };
 
 using Number = NumberTraits<sizeof(void*)>;
@@ -108,7 +99,7 @@ struct Discarded { };
 struct Type {
 	int index;
 	constexpr Type(): index(-1) {}
-	constexpr Type(int index): index(index) {}
+	explicit constexpr Type(int index): index(index) {}
 	bool operator==(Type other) const { return this->index == other.index; }
 	bool operator!=(Type other) const { return this->index != other.index; }
 	operator int() const { return this->index; }
@@ -118,6 +109,8 @@ struct Type {
 #define PK_VAR_LAMBDA(x) ([](VM* vm, ArgsView args) { return VAR(x); })
 #define PK_ACTION(x) ([](VM* vm, ArgsView args) { x; return vm->None; })
 
+#define PK_REGION(name)	1
+
 #ifdef POCKETPY_H
 #define PK_FATAL_ERROR() throw std::runtime_error( "L" + std::to_string(__LINE__) + " FATAL_ERROR()!");
 #else
@@ -126,15 +119,21 @@ struct Type {
 
 #define PK_ASSERT(x) if(!(x)) PK_FATAL_ERROR();
 
+#if PK_DEBUG_EXTRA_CHECK
+#define PK_DEBUG_ASSERT(x) if(!(x)) PK_FATAL_ERROR();
+#else
+#define PK_DEBUG_ASSERT(x)
+#endif
+
 struct PyObject;
 #define PK_BITS(p) (reinterpret_cast<i64>(p))
-#define PK_SMALL_INT(val) (reinterpret_cast<PyObject*>(val << 2 | 0b10))
 
-// is_pod<> for c++17 and c++20
+// is_pod_v<> for c++17 and c++20
 template<typename T>
-struct is_pod {
-	static constexpr bool value = std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>;
-};
+inline constexpr bool is_pod_v = std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>;
+
+template<typename T>
+inline constexpr bool is_sso_v = is_pod_v<T> && sizeof(T) <= sizeof(void*);
 
 #define PK_ALWAYS_PASS_BY_POINTER(T) \
 	T(const T&) = delete; \

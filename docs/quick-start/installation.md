@@ -9,7 +9,7 @@ You have two options to integrate pkpy into your project.
 #### Use the single header file
 
 Download the `pocketpy.h` on our [GitHub Release](https://github.com/pocketpy/pocketpy/releases) page.
-And `#include` it in your project. It is recommended to use the latest dev version.
+And `#include` it in your project. The header can only be included once.
 
 #### Use CMake
 
@@ -149,10 +149,10 @@ delete vm;
 By default, pkpy outputs all messages and errors to `stdout` and `stderr`.
 You can redirect them to your own buffer by setting `vm->_stdout` and `vm->_stderr`.
 
-These two fields are C function pointers `PrintFunc` with the following signature:
+These two fields are C function pointers with the following signature:
 
 ```cpp
-typedef void(*PrintFunc)(const char*, int)
+void(*)(const char*, int);
 ```
 
 Or you can override these two virtual functions:

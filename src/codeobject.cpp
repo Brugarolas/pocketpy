@@ -12,15 +12,12 @@ namespace pkpy{
         for(auto& decl: func_decls) decl->_gc_mark();
     }
 
-    NativeFunc::NativeFunc(NativeFuncC f, int argc, bool method){
-        this->f = f;
-        this->argc = argc;
-        if(argc != -1) this->argc += (int)method;
-    }
+    struct PySignalObject: PyObject {
+        PySignalObject() : PyObject(Type(0)) { gc_enabled = false; }
+        void _obj_gc_mark() override {}
+    };
 
-    NativeFunc::NativeFunc(NativeFuncC f, FuncDecl_ decl){
-        this->f = f;
-        this->argc = -1;
-        this->decl = decl;
-    }
+    PyObject* const PY_NULL = new PySignalObject();
+    PyObject* const PY_OP_CALL = new PySignalObject();
+    PyObject* const PY_OP_YIELD = new PySignalObject();
 }   // namespace pkpy
