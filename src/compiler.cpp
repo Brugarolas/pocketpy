@@ -1,6 +1,7 @@
 #include "pocketpy/compiler.h"
 
 namespace pkpy{
+    PrattRule Compiler::rules[kTokenCount];
 
     NameScope Compiler::name_scope() const {
         auto s = contexts.size()>1 ? NAME_LOCAL : NAME_GLOBAL;
@@ -524,7 +525,11 @@ namespace pkpy{
         if(callback == nullptr) callback = &Compiler::compile_stmt;
         consume(TK(":"));
         if(curr().type!=TK("@eol") && curr().type!=TK("@eof")){
-            compile_stmt();     // inline block
+            while(true){
+                compile_stmt();
+                bool possible = curr().type!=TK("@eol") && curr().type!=TK("@eof");
+                if(prev().type != TK(";") || !possible) break;
+            }
             return;
         }
         if(!match_newlines(mode()==REPL_MODE)){
@@ -703,9 +708,10 @@ __EAT_DOTS_END:
     void Compiler::compile_try_except() {
         ctx()->enter_block(CodeBlockType::TRY_EXCEPT);
         compile_block_body();
-        pod_vector<int> patches = {
+        small_vector_2<int, 6> patches;
+        patches.push_back(
             ctx()->emit_(OP_JUMP_ABSOLUTE, BC_NOARG, BC_KEEPLINE)
-        };
+        );
         ctx()->exit_block();
 
         int finally_entry = -1;
@@ -1277,10 +1283,11 @@ __EAT_DOTS_END:
         std::string_view version = deserializer.read_string('\n');
 
         if(version != PK_VERSION){
-            SyntaxError(_S("precompiled version mismatch: ", version, "!=" PK_VERSION));
+            Str error = _S("precompiled version mismatch: ", version, "!=" PK_VERSION);
+            throw std::runtime_error(error.c_str());
         }
         if(deserializer.read_uint('\n') != (i64)mode()){
-            SyntaxError("precompiled mode mismatch");
+            throw std::runtime_error("precompiled mode mismatch");
         }
 
         int count = deserializer.read_count();

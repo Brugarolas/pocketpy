@@ -4,7 +4,6 @@ namespace pkpy
 {
     struct PyDequeIter // Iterator for the deque type
     {
-        PY_CLASS(PyDequeIter, collections, _deque_iterator)
         PyObject *ref;
         bool is_reversed;
         std::deque<PyObject *>::iterator begin, end, current;
@@ -24,31 +23,26 @@ namespace pkpy
     };
     void PyDequeIter::_register(VM *vm, PyObject *mod, PyObject *type)
     {
-        // Iterator for the deque type
-        vm->_all_types[PK_OBJ_GET(Type, type)].subclass_enabled = false;
-        vm->bind_notimplemented_constructor<PyDequeIter>(type);
-
         vm->bind__iter__(PK_OBJ_GET(Type, type), [](VM *vm, PyObject *obj)
                          { return obj; });
-        vm->bind__next__(PK_OBJ_GET(Type, type), [](VM *vm, PyObject *obj)
+        vm->bind__next__(PK_OBJ_GET(Type, type), [](VM *vm, PyObject *obj) -> unsigned
                          {
             PyDequeIter& self = _CAST(PyDequeIter&, obj);
             if(self.is_reversed){
-                if(self.rcurrent == self.rend) return vm->StopIteration;
-                PyObject* ret = *self.rcurrent;
+                if(self.rcurrent == self.rend) return 0;
+                vm->s_data.push(*self.rcurrent);
                 ++self.rcurrent;
-                return ret;
+                return 1;
             }
             else{
-                if(self.current == self.end) return vm->StopIteration;
-                PyObject* ret = *self.current;
+                if(self.current == self.end) return 0;
+                vm->s_data.push(*self.current);
                 ++self.current;
-                return ret;
+                return 1;
             } });
     }
     struct PyDeque
     {
-        PY_CLASS(PyDeque, collections, deque);
         PyDeque(VM *vm, PyObject *iterable, PyObject *maxlen); // constructor
         // PyDeque members
         std::deque<PyObject *> dequeItems;
@@ -108,33 +102,31 @@ namespace pkpy
         vm->bind__iter__(PK_OBJ_GET(Type, type), [](VM *vm, PyObject* _0)
         {
             PyDeque &self = _CAST(PyDeque &, _0);
-            return vm->heap.gcnew<PyDequeIter>(
-                PyDequeIter::_type(vm), _0,
-                self.dequeItems.begin(), self.dequeItems.end());
+            return vm->new_user_object<PyDequeIter>(_0, self.dequeItems.begin(), self.dequeItems.end());
         });
 
-        vm->bind__repr__(PK_OBJ_GET(Type, type), [](VM *vm, PyObject* _0)
+        vm->bind__repr__(PK_OBJ_GET(Type, type), [](VM *vm, PyObject* _0) -> Str
         {
-            if(vm->_repr_recursion_set.count(_0)) return VAR("[...]");
+            if(vm->_repr_recursion_set.count(_0)) return "[...]";
             const PyDeque &self = _CAST(PyDeque&, _0);
             SStream ss;
             ss << "deque([";
             vm->_repr_recursion_set.insert(_0);
             for (auto it = self.dequeItems.begin(); it != self.dequeItems.end(); ++it)
             {
-                ss << CAST(Str&, vm->py_repr(*it));
+                ss << vm->py_repr(*it);
                 if (it != self.dequeItems.end() - 1) ss << ", ";
             }
             vm->_repr_recursion_set.erase(_0);
             self.bounded ? ss << "], maxlen=" << self.maxlen << ")" : ss << "])";
-            return VAR(ss.str());
+            return ss.str();
         });
 
         // enables comparison between two deques, == and != are supported
         vm->bind__eq__(PK_OBJ_GET(Type, type), [](VM *vm, PyObject* _0, PyObject* _1)
         {
             const PyDeque &self = _CAST(PyDeque&, _0);
-            if(!is_type(_0, PyDeque::_type(vm))) return vm->NotImplemented;
+            if(!vm->is_user_type<PyDeque>(_0)) return vm->NotImplemented;
             const PyDeque &other = _CAST(PyDeque&, _1);
             if (self.dequeItems.size() != other.dequeItems.size()) return vm->False;
             for (int i = 0; i < self.dequeItems.size(); i++){
@@ -214,8 +206,8 @@ namespace pkpy
                  {
                      auto _lock = vm->heap.gc_scope_lock(); // locking the heap
                      PyDeque &self = _CAST(PyDeque &, args[0]);
-                     PyObject *newDequeObj = vm->heap.gcnew<PyDeque>(PyDeque::_type(vm), vm, vm->None, vm->None); // create the empty deque
-                     PyDeque &newDeque = _CAST(PyDeque &, newDequeObj);                                           // cast it to PyDeque so we can use its methods
+                     PyObject *newDequeObj = vm->new_user_object<PyDeque>(vm, vm->None, vm->None); // create the empty deque
+                     PyDeque &newDeque = _CAST(PyDeque &, newDequeObj);                            // cast it to PyDeque so we can use its methods
                      for (auto it = self.dequeItems.begin(); it != self.dequeItems.end(); ++it)
                          newDeque.insertObj(false, true, -1, *it);
                      return newDequeObj;
@@ -261,7 +253,7 @@ namespace pkpy
                      int start = CAST_DEFAULT(int, args[2], 0);
                      int stop = CAST_DEFAULT(int, args[3], self.dequeItems.size());
                      int index = self.findIndex(vm, obj, start, stop);
-                     if (index < 0) vm->ValueError(_CAST(Str &, vm->py_repr(obj)) + " is not in deque");
+                     if (index < 0) vm->ValueError(vm->py_repr(obj) + " is not in deque");
                      return VAR(index);
                  });
         // NEW: returns the index of the given object in the deque
@@ -298,7 +290,7 @@ namespace pkpy
                      PyObject *obj = args[1];
                      PyObject *removed = self.popObj(false, false, obj, vm);
                      if (removed == nullptr)
-                         vm->ValueError(_CAST(Str &, vm->py_repr(obj)) + " is not in list");
+                         vm->ValueError(vm->py_repr(obj) + " is not in list");
                      return vm->None;
                  });
         // NEW: reverses the deque
@@ -386,7 +378,7 @@ namespace pkpy
     PyDeque::PyDeque(VM *vm, PyObject *iterable, PyObject *maxlen)
     {
 
-        if (!vm->py_eq(maxlen, vm->None)) // fix the maxlen first
+        if (maxlen != vm->None) // fix the maxlen first
         {
             int tmp = CAST(int, maxlen);
             if (tmp < 0)
@@ -402,7 +394,7 @@ namespace pkpy
             this->bounded = false;
             this->maxlen = -1;
         }
-        if (!vm->py_eq(iterable, vm->None))
+        if (iterable != vm->None)
         {
             this->dequeItems.clear();              // clear the deque
             auto _lock = vm->heap.gc_scope_lock(); // locking the heap
@@ -546,12 +538,11 @@ namespace pkpy
             PK_OBJ_MARK(obj);
     }
     /// @brief registers the PyDeque class
-    /// @param vm is needed for the new_module and register_class
     void add_module_collections(VM *vm)
     {
         PyObject *mod = vm->new_module("collections");
-        PyDeque::register_class(vm, mod);
-        PyDequeIter::register_class(vm, mod);
+        vm->register_user_class<PyDeque>(mod, "deque", VM::tp_object, true);
+        vm->register_user_class<PyDequeIter>(mod, "_deque_iter");
         CodeObject_ code = vm->compile(kPythonLibs_collections, "collections.py", EXEC_MODE);
         vm->_exec(code, mod);
     }

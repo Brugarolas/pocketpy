@@ -45,8 +45,7 @@ static void patch__init__(VM* vm, Type cls){
 }
 
 static void patch__repr__(VM* vm, Type cls){
-    vm->bind__repr__(cls, [](VM* vm, PyObject* _0){
-        auto _lock = vm->heap.gc_scope_lock();
+    vm->bind__repr__(cls, [](VM* vm, PyObject* _0) -> Str{
         const PyTypeInfo* cls_info = &vm->_all_types[vm->_tp(_0)];
         const auto& fields = cls_info->annotated_fields;
         const NameDict& obj_d = _0->attr();
@@ -56,10 +55,10 @@ static void patch__repr__(VM* vm, Type cls){
         for(StrName field: fields){
             if(first) first = false;
             else ss << ", ";
-            ss << field << "=" << CAST(Str&, vm->py_repr(obj_d[field]));
+            ss << field << "=" << vm->py_repr(obj_d[field]);
         }
         ss << ")";
-        return VAR(ss.str());
+        return ss.str();
     });
 }
 
@@ -80,7 +79,7 @@ static void patch__eq__(VM* vm, Type cls){
 void add_module_dataclasses(VM* vm){
     PyObject* mod = vm->new_module("dataclasses");
 
-    vm->bind_func<1>(mod, "dataclass", [](VM* vm, ArgsView args){
+    vm->bind_func(mod, "dataclass", 1, [](VM* vm, ArgsView args){
         vm->check_type(args[0], VM::tp_type);
         Type cls = PK_OBJ_GET(Type, args[0]);
         NameDict& cls_d = args[0]->attr();
@@ -103,8 +102,8 @@ void add_module_dataclasses(VM* vm){
         return args[0];
     });
 
-    vm->bind_func<1>(mod, "asdict", [](VM* vm, ArgsView args){
-        const auto& fields = vm->_inst_type_info(args[0])->annotated_fields;
+    vm->bind_func(mod, "asdict", 1, [](VM* vm, ArgsView args){
+        const auto& fields = vm->_tp_info(args[0])->annotated_fields;
         const NameDict& obj_d = args[0]->attr();
         Dict d(vm);
         for(StrName field: fields){
