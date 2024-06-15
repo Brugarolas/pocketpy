@@ -1,5 +1,4 @@
 #include <fstream>
-#include <filesystem>
 #include <iostream>
 #include <sstream>
 
@@ -56,12 +55,14 @@ static int f_input(pkpy_vm* vm){
     return 1;
 }
 
+void regpt (void*);
 int main(int argc, char** argv){
 #if _WIN32
     SetConsoleCP(CP_UTF8);
     SetConsoleOutputCP(CP_UTF8);
 #endif
     pkpy_vm* vm = pkpy_new_vm(true);
+regpt(vm);
 
     pkpy_push_function(vm, "input(prompt=None) -> str", f_input);
     pkpy_eval(vm, "__import__('builtins')");
@@ -85,13 +86,7 @@ int main(int argc, char** argv){
         std::string argv_1 = argv[1];
         if(argv_1 == "-h" || argv_1 == "--help") goto __HELP;
 
-        std::filesystem::path filepath(argv[1]);
-        filepath = std::filesystem::absolute(filepath);
-        if(!std::filesystem::exists(filepath)){
-            std::cerr << "File not found: " << argv_1 << std::endl;
-            return 2;
-        }        
-        std::ifstream file(filepath);
+        std::ifstream file(argv[1]);
         if(!file.is_open()){
             std::cerr << "Failed to open file: " << argv_1 << std::endl;
             return 3;
@@ -99,10 +94,11 @@ int main(int argc, char** argv){
         std::string src((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         file.close();
 
-        // set parent path as cwd
-        std::filesystem::current_path(filepath.parent_path());
+        pkpy_set_main_argv(vm, argc, argv);
 
-        bool ok = pkpy_exec_2(vm, src.c_str(), filepath.filename().string().c_str(), 0, NULL);
+//        bool ok = pkpy_exec_2(vm, src.c_str(), filepath.filename().string().c_str(), 0, NULL);
+        bool ok = pkpy_exec_2(vm, src.c_str(), argv[1], 0, NULL);
+
         if(!ok) pkpy_clear_error(vm, NULL);
         pkpy_delete_vm(vm);
         return ok ? 0 : 1;

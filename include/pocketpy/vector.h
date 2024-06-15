@@ -5,13 +5,13 @@
 
 namespace pkpy{
 
-template<typename T>
+template<typename T, int Growth=2>
 struct pod_vector{
     static constexpr int SizeT = sizeof(T);
     static constexpr int N = 64 / SizeT;
 
     // static_assert(64 % SizeT == 0);
-    static_assert(is_pod<T>::value);
+    static_assert(is_pod_v<T>);
     static_assert(N >= 4);
 
     int _size;
@@ -60,13 +60,13 @@ struct pod_vector{
 
     template<typename __ValueT>
     void push_back(__ValueT&& t) {
-        if (_size == _capacity) reserve(_capacity*2);
+        if (_size == _capacity) reserve(_capacity*Growth);
         _data[_size++] = std::forward<__ValueT>(t);
     }
 
     template<typename... Args>
     void emplace_back(Args&&... args) {
-        if (_size == _capacity) reserve(_capacity*2);
+        if (_size == _capacity) reserve(_capacity*Growth);
         new (&_data[_size++]) T(std::forward<Args>(args)...);
     }
 
@@ -85,10 +85,12 @@ struct pod_vector{
     T popx_back() { T t = std::move(_data[_size-1]); _size--; return t; }
     
     void extend(const pod_vector& other){
+reserve(_size + other._size);
         for(int i=0; i<other.size(); i++) push_back(other[i]);
     }
 
     void extend(const T* begin, const T* end){
+reserve(_size + (end-begin));
         for(auto it=begin; it!=end; it++) push_back(*it);
     }
 
@@ -110,7 +112,7 @@ struct pod_vector{
 
     template<typename __ValueT>
     void insert(int i, __ValueT&& val){
-        if (_size == _capacity) reserve(_capacity*2);
+        if (_size == _capacity) reserve(_capacity*Growth);
         for(int j=_size; j>i; j--) _data[j] = _data[j-1];
         _data[i] = std::forward<__ValueT>(val);
         _size++;
@@ -119,6 +121,15 @@ struct pod_vector{
     void erase(int i){
         for(int j=i; j<_size-1; j++) _data[j] = _data[j+1];
         _size--;
+    }
+
+    void replace(int start, int stop, const T* begin, const T* end){
+int n = (end-begin) - (stop-start);
+reserve(_size+n);
+if (n>0) for (int i=_size -1; i>=stop; i--) _data[i+n] = _data[i];
+else if (n<0) for (int i=stop; i<_size; i++) _data[i+n] = _data[i];
+for (auto it=begin; it!=end; ++it) _data[start++] = *it;
+_size += n;
     }
 
     void reverse(){
@@ -290,7 +301,7 @@ namespace pkpy
             const auto size = other.size();
             const auto capacity = other.capacity();
             m_begin = reinterpret_cast<T*>(other.is_small() ? m_buffer : std::malloc(sizeof(T) * capacity));
-            uninitialized_copy_n(other.begin, size, this->m_begin);
+            uninitialized_copy_n(other.m_begin, size, this->m_begin);
             m_end = m_begin + size;
             m_max = m_begin + capacity;
         }
@@ -394,16 +405,14 @@ namespace pkpy
         }
     };
 
-// small_vector_no_copy_and_move
-
     template<typename T, std::size_t N>
-    class small_vector_no_copy_and_move: public small_vector<T, N>
+    class small_vector_2: public small_vector<T, N>
     {
     public:
-        small_vector_no_copy_and_move() = default;
-        small_vector_no_copy_and_move(const small_vector_no_copy_and_move& other) = delete;
-        small_vector_no_copy_and_move& operator=(const small_vector_no_copy_and_move& other) = delete;
-        small_vector_no_copy_and_move(small_vector_no_copy_and_move&& other) = delete;
-        small_vector_no_copy_and_move& operator=(small_vector_no_copy_and_move&& other) = delete;
+        small_vector_2() = default;
+        small_vector_2(const small_vector_2& other) = delete;
+        small_vector_2& operator=(const small_vector_2& other) = delete;
+        small_vector_2(small_vector_2&& other) = delete;
+        small_vector_2& operator=(small_vector_2&& other) = delete;
     };
 } // namespace pkpy

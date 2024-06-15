@@ -6,7 +6,7 @@ with open("include/pocketpy/opcodes.h", "rt", encoding='utf-8') as f:
 	OPCODES_TEXT = '\n' + f.read() + '\n'
 
 pipeline = [
-	["config.h", "export.h", "_generated.h", "common.h", "memory.h", "vector.h", "str.h", "tuplelist.h", "namedict.h", "error.h"],
+	["config.h", "export.h", "_generated.h", "common.h", "memory.h", "vector.h", "str.h", "tuplelist.h", "namedict.h", "error.h", "any.h"],
 	["obj.h", "dict.h", "codeobject.h", "frame.h", "profiler.h"],
 	["gc.h", "vm.h", "ceval.h", "lexer.h", "expr.h", "compiler.h", "repl.h"],
 	["cffi.h", "bindings.h", "iter.h", "base64.h", "csv.h", "collections.h", "array2d.h", "dataclasses.h", "random.h", "linalg.h", "easing.h", "io.h", "modules.h"],
@@ -36,7 +36,7 @@ def remove_copied_include(text):
 			key = key[9:]
 		if key in ["user_config.h", "cJSONw.hpp"]:
 			return m.group(0)
-		if key == "opcodes.h":
+		if "opcodes.h" in key:
 			return OPCODES_TEXT
 		assert key in copied, f"include {key} not found"
 		return ""
@@ -64,7 +64,7 @@ for seq in pipeline:
 with open("amalgamated/pocketpy.h", "wt", encoding='utf-8', newline='\n') as f:
 	final_text = \
 r'''/*
- *  Copyright (c) 2023 blueloveTH
+ *  Copyright (c) 2024 blueloveTH
  *  Distributed Under The MIT License
  *  https://github.com/pocketpy/pocketpy
  */

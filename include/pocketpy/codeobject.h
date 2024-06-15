@@ -2,6 +2,7 @@
 
 #include "obj.h"
 #include "error.h"
+#include "any.h"
 
 namespace pkpy{
 
@@ -9,12 +10,6 @@ enum NameScope { NAME_LOCAL, NAME_GLOBAL, NAME_GLOBAL_UNKNOWN };
 
 enum Opcode: uint8_t {
     #define OPCODE(name) OP_##name,
-    #include "opcodes.h"
-    #undef OPCODE
-};
-
-inline const char* OP_NAMES[] = {
-    #define OPCODE(name) #name,
     #include "opcodes.h"
     #undef OPCODE
 };
@@ -65,14 +60,13 @@ struct CodeObject {
 
     std::shared_ptr<SourceData> src;
     Str name;
-    bool is_generator;
 
     std::vector<Bytecode> codes;
     std::vector<int> iblocks;       // block index for each bytecode
     std::vector<LineInfo> lines;
     
-    small_vector_no_copy_and_move<PyObject*, 8> consts;         // constants
-    small_vector_no_copy_and_move<StrName, 8> varnames;         // local variables
+    small_vector_2<PyVar, 8> consts;         // constants
+    small_vector_2<StrName, 8> varnames;         // local variables
 
     NameDictInt varnames_inv;
     std::vector<CodeBlock> blocks;
@@ -90,28 +84,36 @@ struct CodeObject {
     void _gc_mark() const;
 };
 
+enum class FuncType{
+    UNSET,
+    NORMAL,
+    SIMPLE,
+    EMPTY,
+    GENERATOR,
+};
+
 struct FuncDecl {
     struct KwArg {
         int index;              // index in co->varnames
         StrName key;            // name of this argument
-        PyObject* value;        // default value
+        PyVar value;        // default value
     };
     CodeObject_ code;           // code object of this function
 
-    small_vector_no_copy_and_move<int, 6> args;      // indices in co->varnames
-    small_vector_no_copy_and_move<KwArg, 6> kwargs;  // indices in co->varnames
+    small_vector_2<int, 6> args;      // indices in co->varnames
+    small_vector_2<KwArg, 6> kwargs;  // indices in co->varnames
 
     int starred_arg = -1;       // index in co->varnames, -1 if no *arg
     int starred_kwarg = -1;     // index in co->varnames, -1 if no **kwarg
     bool nested = false;        // whether this function is nested
 
-    Str signature;              // signature of this function
-    Str docstring;              // docstring of this function
-    bool is_simple;
+    const char* docstring;      // docstring of this function (weak ref)
+
+    FuncType type = FuncType::UNSET;
 
     NameDictInt kw_to_index;
 
-    void add_kwarg(int index, StrName key, PyObject* value){
+    void add_kwarg(int index, StrName key, PyVar value){
         kw_to_index.set(key, index);
         kwargs.push_back(KwArg{index, key, value});
     }
@@ -119,62 +121,26 @@ struct FuncDecl {
     void _gc_mark() const;
 };
 
-struct UserData{
-    char data[12];
-    bool empty;
-
-    UserData(): empty(true) {}
-    template<typename T>
-    UserData(T t): empty(false){
-        static_assert(std::is_trivially_copyable_v<T>);
-        static_assert(sizeof(T) <= sizeof(data));
-        memcpy(data, &t, sizeof(T));
-    }
-
-    template <typename T>
-    T get() const{
-        static_assert(std::is_trivially_copyable_v<T>);
-        static_assert(sizeof(T) <= sizeof(data));
-#if PK_DEBUG_EXTRA_CHECK
-        PK_ASSERT(!empty);
-#endif
-        return reinterpret_cast<const T&>(data);
-    }
-};
-
 struct NativeFunc {
     NativeFuncC f;
+    int argc;           // old style argc-based call
+    FuncDecl_ decl;     // new style decl-based call
+    any _userdata;
 
-    // old style argc-based call
-    int argc;
-
-    // new style decl-based call
-    FuncDecl_ decl;
-
-    UserData _userdata;
-
-    void set_userdata(UserData data) {
-        if(!_userdata.empty && !data.empty){
-            // override is not supported
-            throw std::runtime_error("userdata already set");
-        }
-        _userdata = data;
-    }
-
-    NativeFunc(NativeFuncC f, int argc, bool method);
-    NativeFunc(NativeFuncC f, FuncDecl_ decl);
+    NativeFunc(NativeFuncC f, int argc, any userdata={}): f(f), argc(argc), decl(nullptr), _userdata(std::move(userdata)) {}
+    NativeFunc(NativeFuncC f, FuncDecl_ decl, any userdata={}): f(f), argc(-1), decl(decl), _userdata(std::move(userdata)) {}
 
     void check_size(VM* vm, ArgsView args) const;
-    PyObject* call(VM* vm, ArgsView args) const;
+    PyVar call(VM* vm, ArgsView args) const { return f(vm, args); }
 };
 
 struct Function{
     FuncDecl_ decl;
-    PyObject* _module;  // weak ref
-    PyObject* _class;   // weak ref
+    PyVar _module;  // weak ref
+    PyVar _class;   // weak ref
     NameDict_ _closure;
 
-    explicit Function(FuncDecl_ decl, PyObject* _module, PyObject* _class, NameDict_ _closure):
+    explicit Function(FuncDecl_ decl, PyVar _module, PyVar _class, NameDict_ _closure):
         decl(decl), _module(_module), _class(_class), _closure(_closure) {}
 };
 
@@ -187,11 +153,7 @@ struct Py_<Function> final: PyObject {
     }
     void _obj_gc_mark() override {
         _value.decl->_gc_mark();
-        if(_value._closure != nullptr) gc_mark_namedict(*_value._closure);
-    }
-
-    void* _value_ptr() override {
-        return &_value;
+        if(_value._closure != nullptr) _gc_mark_namedict(_value._closure.get());
     }
 };
 
@@ -207,15 +169,13 @@ struct Py_<NativeFunc> final: PyObject {
             _value.decl->_gc_mark();
         }
     }
-    void* _value_ptr() override {
-        return &_value;
-    }
 };
 
 template<typename T>
-T lambda_get_userdata(PyObject** p){
-    if(p[-1] != PY_NULL) return PK_OBJ_GET(NativeFunc, p[-1])._userdata.get<T>();
-    else return PK_OBJ_GET(NativeFunc, p[-2])._userdata.get<T>();
+T& lambda_get_userdata(PyVar* p){
+    static_assert(std::is_same_v<T, std::decay_t<T>>);
+    int offset = p[-1] != PY_NULL ? -1 : -2;
+    return PK_OBJ_GET(NativeFunc, p[offset])._userdata.cast<T>();
 }
 
 } // namespace pkpy

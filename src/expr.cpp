@@ -9,6 +9,10 @@ namespace pkpy{
         return true;
     }
 
+    inline bool is_small_int(i64 value){
+        return value >= 0 && value < 1024;
+    }
+
     int CodeEmitContext::get_loop() const {
         int index = curr_block_i;
         while(index >= 0){
@@ -86,10 +90,9 @@ namespace pkpy{
     }
 
     int CodeEmitContext::emit_int(i64 value, int line){
-        bool allow_neg_int = is_negative_shift_well_defined() || value >= 0;
-        if(allow_neg_int && value >= -5 && value <= 16){
-            uint8_t op = OP_LOAD_INT_NEG_5 + (uint8_t)value + 5;
-            return emit_((Opcode)op, BC_NOARG, line);
+        if(is_small_int(value)){
+            value = (value << 2) | 0b10;
+            return emit_(OP_LOAD_SMALL_INT, (uint16_t)value, line);
         }else{
             return emit_(OP_LOAD_CONST, add_const(VAR(value)), line);
         }
@@ -128,8 +131,8 @@ namespace pkpy{
         }
     }
 
-    int CodeEmitContext::add_const(PyObject* v){
-        if(is_non_tagged_type(v, vm->tp_str)){
+    int CodeEmitContext::add_const(PyVar v){
+        if(is_type(v, vm->tp_str)){
             // warning: should use add_const_string() instead
             return add_const_string(PK_OBJ_GET(Str, v).sv());
         }else{
@@ -360,10 +363,14 @@ namespace pkpy{
             Bytecode& prev = ctx->co->codes.back();
             if(prev.op == OP_BUILD_TUPLE && prev.arg == items.size()){
                 // build tuple and unpack it is meaningless
-                prev.op = OP_NO_OP;
-                prev.arg = BC_NOARG;
+                ctx->revert_last_emit_();
             }else{
-                ctx->emit_(OP_UNPACK_SEQUENCE, items.size(), line);
+                if(prev.op == OP_FOR_ITER){
+                    prev.op = OP_FOR_ITER_UNPACK;
+                    prev.arg = items.size();
+                }else{
+                    ctx->emit_(OP_UNPACK_SEQUENCE, items.size(), line);
+                }
             }
         }else{
             // starred assignment target must be in a tuple
@@ -390,30 +397,42 @@ namespace pkpy{
         return true;
     }
 
+inline void CompExpr::emit_comp_expr(CodeEmitContext* ctx, int comp_index){
+if (comp_index>=comps.size() ) {
+expr->emit_(ctx);
+            ctx->emit_(op1(), BC_NOARG, BC_KEEPLINE);
+}
+else emit_comp(ctx, comp_index);
+}
+
     void CompExpr::emit_(CodeEmitContext* ctx){
-        ctx->emit_(op0(), 0, line);
-        iter->emit_(ctx);
+auto op = op0();
+if (op!=OP_NO_OP)         ctx->emit_(op, 0, line);
+emit_comp(ctx, 0);
+}
+
+    void CompExpr::emit_comp(CodeEmitContext* ctx, int comp_index){
+auto op = op0();
+Comp& comp = comps[comp_index];
+if (op!=OP_NO_OP && comp_index>0 && comp_index>=comps.size() -1)         ctx->emit_(OP_DUP_NTH, comp_index+1, BC_KEEPLINE);
+        comp.iter->emit_(ctx);
         ctx->emit_(OP_GET_ITER, BC_NOARG, BC_KEEPLINE);
         ctx->enter_block(CodeBlockType::FOR_LOOP);
         int for_codei = ctx->emit_(OP_FOR_ITER, BC_NOARG, BC_KEEPLINE);
-        bool ok = vars->emit_store(ctx);
+        bool ok = comp.vars->emit_store(ctx);
         // this error occurs in `vars` instead of this line, but...nevermind
-        PK_ASSERT(ok);  // TODO: raise a SyntaxError instead
+        if(!ok) throw std::runtime_error("SyntaxError");
         ctx->try_merge_for_iter_store(for_codei);
-        if(cond){
-            cond->emit_(ctx);
+        if(comp.cond){
+            comp.cond->emit_(ctx);
             int patch = ctx->emit_(OP_POP_JUMP_IF_FALSE, BC_NOARG, BC_KEEPLINE);
-            expr->emit_(ctx);
-            ctx->emit_(op1(), BC_NOARG, BC_KEEPLINE);
+            emit_comp_expr(ctx, comp_index+1);
             ctx->patch_jump(patch);
-        }else{
-            expr->emit_(ctx);
-            ctx->emit_(op1(), BC_NOARG, BC_KEEPLINE);
-        }
+        }else emit_comp_expr(ctx, comp_index+1);
         ctx->emit_(OP_LOOP_CONTINUE, ctx->get_loop(), BC_KEEPLINE);
         ctx->exit_block();
+if (op!=OP_NO_OP && comp_index>0 && comp_index>=comps.size() -1)         ctx->emit_(OP_POP_TOP, BC_NOARG, BC_KEEPLINE);
     }
-
 
     void FStringExpr::_load_simple_expr(CodeEmitContext* ctx, Str expr){
         bool repr = false;
@@ -538,20 +557,35 @@ namespace pkpy{
     void SubscrExpr::emit_(CodeEmitContext* ctx){
         a->emit_(ctx);
         b->emit_(ctx);
-        ctx->emit_(OP_LOAD_SUBSCR, BC_NOARG, line);
+        Bytecode last_bc = ctx->co->codes.back();
+        if(b->is_name() && last_bc.op == OP_LOAD_FAST){
+            ctx->revert_last_emit_();
+            ctx->emit_(OP_LOAD_SUBSCR_FAST, last_bc.arg, line);
+        }else if(b->is_literal() && last_bc.op == OP_LOAD_SMALL_INT){
+            ctx->revert_last_emit_();
+            ctx->emit_(OP_LOAD_SUBSCR_SMALL_INT, last_bc.arg, line);
+        }else{
+            ctx->emit_(OP_LOAD_SUBSCR, BC_NOARG, line);
+        }
+    }
+
+    bool SubscrExpr::emit_store(CodeEmitContext* ctx){
+        a->emit_(ctx);
+        b->emit_(ctx);
+        Bytecode last_bc = ctx->co->codes.back();
+        if(b->is_name() && last_bc.op == OP_LOAD_FAST){
+            ctx->revert_last_emit_();
+            ctx->emit_(OP_STORE_SUBSCR_FAST, last_bc.arg, line);
+        }else{
+            ctx->emit_(OP_STORE_SUBSCR, BC_NOARG, line);
+        }
+        return true;
     }
 
     bool SubscrExpr::emit_del(CodeEmitContext* ctx){
         a->emit_(ctx);
         b->emit_(ctx);
         ctx->emit_(OP_DELETE_SUBSCR, BC_NOARG, line);
-        return true;
-    }
-
-    bool SubscrExpr::emit_store(CodeEmitContext* ctx){
-        a->emit_(ctx);
-        b->emit_(ctx);
-        ctx->emit_(OP_STORE_SUBSCR, BC_NOARG, line);
         return true;
     }
 
@@ -637,7 +671,7 @@ namespace pkpy{
         }
     }
 
-    void BinaryExpr::_emit_compare(CodeEmitContext* ctx, pod_vector<int>& jmps){
+    void BinaryExpr::_emit_compare(CodeEmitContext* ctx, small_vector_2<int, 6>& jmps){
         if(lhs->is_compare()){
             static_cast<BinaryExpr*>(lhs.get())->_emit_compare(ctx, jmps);
         }else{
@@ -661,7 +695,7 @@ namespace pkpy{
     }
 
     void BinaryExpr::emit_(CodeEmitContext* ctx) {
-        pod_vector<int> jmps;
+        small_vector_2<int, 6> jmps;
         if(is_compare() && lhs->is_compare()){
             // (a < b) < c
             static_cast<BinaryExpr*>(lhs.get())->_emit_compare(ctx, jmps);

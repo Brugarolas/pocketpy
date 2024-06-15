@@ -13,6 +13,8 @@ web/lib
 *.a
 *.so
 *.dll
+*.exe
+*.a
 *.dylib
 
 plugins/unity/
@@ -25,6 +27,18 @@ APPS
 build
 
 main
+
+pypi/
+libpocketpy.dylib
+
+.xmake/
+
+obj/
+objd/
+out*.txt
+
 pocketpy.dSYM
 libpocketpy.dylib.dSYM/
 main.dSYM/
+
+docs/references.md
