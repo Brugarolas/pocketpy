@@ -7,58 +7,60 @@
 namespace pkpy{
 
 struct RangeIter{
-    PY_CLASS(RangeIter, builtins, _range_iterator)
     Range r;
     i64 current;
     RangeIter(Range r) : r(r), current(r.start) {}
 
-    static void _register(VM* vm, PyObject* mod, PyObject* type);
+    static void _register(VM* vm, PyVar mod, PyVar type);
 };
 
 struct ArrayIter{
-    PY_CLASS(ArrayIter, builtins, _array_iterator)
-    PyObject* ref;
-    PyObject** begin;
-    PyObject** end;
-    PyObject** current;
+    PyVar ref;
+    PyVar* begin;
+    PyVar* end;
+    PyVar* current;
 
-    ArrayIter(PyObject* ref, PyObject** begin, PyObject** end)
+    ArrayIter(PyVar ref, PyVar* begin, PyVar* end)
         : ref(ref), begin(begin), end(end), current(begin) {}
 
     void _gc_mark() const{ PK_OBJ_MARK(ref); }
-    static void _register(VM* vm, PyObject* mod, PyObject* type);
+    static void _register(VM* vm, PyVar mod, PyVar type);
 };
 
 struct StringIter{
-    PY_CLASS(StringIter, builtins, _string_iterator)
-    PyObject* ref;
-    Str* str;
-    int index;      // byte index
-
-    StringIter(PyObject* ref) : ref(ref), str(&PK_OBJ_GET(Str, ref)), index(0) {}
-
+    PyVar ref;
+    int i;      // byte index
+    StringIter(PyVar ref) : ref(ref), i(0) {}
     void _gc_mark() const{ PK_OBJ_MARK(ref); }
-
-    static void _register(VM* vm, PyObject* mod, PyObject* type);
+    static void _register(VM* vm, PyVar mod, PyVar type);
 };
 
 struct Generator{
-    PY_CLASS(Generator, builtins, generator)
     Frame frame;
     int state;      // 0,1,2
     List s_backup;
 
     Generator(Frame&& frame, ArgsView buffer): frame(std::move(frame)), state(0) {
-        for(PyObject* obj: buffer) s_backup.push_back(obj);
+        for(PyVar obj: buffer) s_backup.push_back(obj);
     }
 
     void _gc_mark() const{
         frame._gc_mark();
-        for(PyObject* obj: s_backup) PK_OBJ_MARK(obj);
+        for(PyVar obj: s_backup) PK_OBJ_MARK(obj);
     }
 
-    PyObject* next(VM* vm);
-    static void _register(VM* vm, PyObject* mod, PyObject* type);
+    PyVar next(VM* vm);
+    static void _register(VM* vm, PyVar mod, PyVar type);
+};
+
+struct DictItemsIter{
+    PyVar ref;
+    int i;
+    DictItemsIter(PyVar ref) : ref(ref) {
+        i = PK_OBJ_GET(Dict, ref)._head_idx;
+    }
+    void _gc_mark() const{ PK_OBJ_MARK(ref); }
+    static void _register(VM* vm, PyVar mod, PyVar type);
 };
 
 } // namespace pkpy

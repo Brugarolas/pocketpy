@@ -110,7 +110,7 @@ struct CodeEmitContext{
     void patch_jump(int index);
     bool add_label(StrName name);
     int add_varname(StrName name);
-    int add_const(PyObject*);
+    int add_const(PyVar);
     int add_const_string(std::string_view);
     int add_func_decl(FuncDecl_ decl);
     void emit_store_name(NameScope scope, StrName name, int line);
@@ -270,14 +270,19 @@ struct TupleExpr: SequenceExpr{
 
 struct CompExpr: Expr{
     Expr_ expr;       // loop expr
+struct Comp {
     Expr_ vars;       // loop vars
     Expr_ iter;       // loop iter
     Expr_ cond;       // optional if condition
+};
+std::vector<Comp> comps;
 
     virtual Opcode op0() = 0;
     virtual Opcode op1() = 0;
 
     void emit_(CodeEmitContext* ctx) override;
+    void emit_comp(CodeEmitContext* ctx, int comp_index);
+inline     void emit_comp_expr(CodeEmitContext* ctx, int comp_index);
 };
 
 struct ListCompExpr: CompExpr{
@@ -293,6 +298,11 @@ struct DictCompExpr: CompExpr{
 struct SetCompExpr: CompExpr{
     Opcode op0() override { return OP_BUILD_SET; }
     Opcode op1() override { return OP_SET_ADD; }
+};
+
+struct GenCompExpr: CompExpr{
+    Opcode op0() override { return OP_NO_OP; }
+    Opcode op1() override { return OP_YIELD_VALUE; }
 };
 
 struct LambdaExpr: Expr{
@@ -363,7 +373,7 @@ struct BinaryExpr: Expr{
     Expr_ lhs;
     Expr_ rhs;
     bool is_compare() const override;
-    void _emit_compare(CodeEmitContext* ctx, pod_vector<int>& jmps);
+    void _emit_compare(CodeEmitContext*, small_vector_2<int, 6>&);
     void emit_(CodeEmitContext* ctx) override;
 };
 

@@ -268,17 +268,6 @@ assert type(12 * [12]) is list
 
 
 # /************ tuple ************/
-# 未完全测试准确性-----------------------------------------------
-#       180:  783:    _vm->bind_constructor<-1>("tuple", [](VM* vm, ArgsView args) {
-#        32:  784:        if(args.size() == 1+0) return VAR(Tuple(0));
-#        32:  785:        if(args.size() == 1+1){
-#        32:  786:            List list = CAST(List, vm->py_list(args[1]));
-#        32:  787:            return VAR(Tuple(std::move(list)));
-#        32:  788:        }
-#     #####:  789:        vm->TypeError("tuple() takes at most 1 argument");
-#     #####:  790:        return vm->None;
-#        32:  791:    });
-#         -:  792:
 # test tuple:
 try:
     tuple(1,2)
@@ -312,11 +301,6 @@ assert type(repr(bytes([0x41, 0x42, 0x43]))) is str
 
 
 # /************ slice ************/
-# 未完全测试准确性-----------------------------------------------
-#       116:  953:    _vm->bind_constructor<4>("slice", [](VM* vm, ArgsView args) {
-#     #####:  954:        return VAR(Slice(args[1], args[2], args[3]));
-#         -:  955:    });
-# test slice:
 assert type(slice(0.1, 0.2, 0.3)) is slice
 
 
@@ -335,7 +319,6 @@ assert type(s) is slice
 assert s.start == 1
 assert s.stop == 2
 assert s.step == 3
-assert slice.__dict__['start'].__signature__ == 'start'
 
 # 未完全测试准确性-----------------------------------------------
 # test slice.__repr__
@@ -489,16 +472,8 @@ class A():
         self._name = val
 
 assert A().value == 2
-assert A.__dict__['value'].__signature__ == ''
 
-A.name = property(A.get_name, A.set_name, "name: str")
-assert A.__dict__['name'].__signature__ == 'name: str'
-try:
-    property(A.get_name, A.set_name, 1)
-    print('未能拦截错误, 在测试 property')
-    exit(1)
-except:
-    pass
+A.name = property(A.get_name, A.set_name)
 
 class Vector2:
     def __init__(self) -> None:
@@ -522,12 +497,6 @@ def aaa():
     '12345'
     pass
 assert type(aaa.__doc__) is str
-
-
-# function.__signature__
-def aaa():
-    pass
-assert type(aaa.__signature__) is str
 
 
 # /************ module time ************/

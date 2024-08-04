@@ -19,21 +19,21 @@ struct PrattRule{
 class Compiler {
     PK_ALWAYS_PASS_BY_POINTER(Compiler)
 
-    inline static PrattRule rules[kTokenCount];
+    static PrattRule rules[kTokenCount];
 
     Lexer lexer;
     stack_no_copy<CodeEmitContext> contexts;
     VM* vm;
     bool unknown_global_scope;     // for eval/exec() call
     // for parsing token stream
-    int i = 0;
+    std::size_t i = 0;
     std::vector<Token> tokens;
 
     const Token& prev() const{ return tokens.at(i-1); }
     const Token& curr() const{ return tokens.at(i); }
     const Token& next() const{ return tokens.at(i+1); }
     const Token& err() const{
-        if(i >= tokens.size()) return prev();
+        if(static_cast<int>(i) >= static_cast<int>(tokens.size())) return prev();
         return curr();
     }
     void advance(int delta=1) { i += delta; }
@@ -76,6 +76,7 @@ class Compiler {
     void exprBytes();
     void exprFString();
     void exprLambda();
+    void exprGenComp(int prev_i);
     void exprOr();
     void exprAnd();
     void exprTernary();
@@ -112,8 +113,8 @@ class Compiler {
     void _compile_f_args(FuncDecl_ decl, bool enable_type_hints);
     void compile_function(const Expr_vector& decorators={});
 
-    PyObject* to_object(const TokenValue& value);
-    PyObject* read_literal();
+    PyVar to_object(const TokenValue& value);
+    PyVar read_literal();
 
     void SyntaxError(Str msg){ lexer.throw_err("SyntaxError", msg, err().line, err().start); }
     void SyntaxError(){ lexer.throw_err("SyntaxError", "invalid syntax", err().line, err().start); }
@@ -121,7 +122,24 @@ class Compiler {
 
 public:
     Compiler(VM* vm, std::string_view source, const Str& filename, CompileMode mode, bool unknown_global_scope=false);
+    Str precompile();
+    void from_precompiled(const char* source);
     CodeObject_ compile();
+};
+
+struct TokenDeserializer{
+    const char* curr;
+    const char* source;
+
+    TokenDeserializer(const char* source): curr(source), source(source) {}
+    char read_char(){ return *curr++; }
+    bool match_char(char c){ if(*curr == c) { curr++; return true; } return false; }
+    
+    std::string_view read_string(char c);
+    Str read_string_from_hex(char c);
+    int read_count();
+    i64 read_uint(char c);
+    f64 read_float(char c);
 };
 
 } // namespace pkpy

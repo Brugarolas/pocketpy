@@ -23,7 +23,10 @@ pkpy is a lightweight(~15K LOC) Python interpreter for game scripting, built on 
 It aims to be an alternative to lua for game scripting, with elegant syntax, powerful features and competitive performance.
 pkpy is extremely easy to embed via a single header file `pocketpy.h`, without external dependencies.
 
-Please see https://pocketpy.dev for details or try [Live Demo](https://pocketpy.dev/static/web/).
+Please see https://pocketpy.dev for details and try the following resources.
++ [Live Python Demo](https://pocketpy.dev/static/web/): Python REPL of the latest version
+
+> We are moving to v2.0 branch, which is a complete refactor of this project in C11. See [Migration Guide](https://pocketpy.dev/migrate/) for more details.
 
 ## Supported Platforms
 
@@ -45,7 +48,7 @@ You have two options to integrate pkpy into your project.
 #### Use the single header file
 
 Download the `pocketpy.h` on our [GitHub Release](https://github.com/pocketpy/pocketpy/releases) page.
-And `#include` it in your project. It is recommended to use the latest dev version.
+And `#include` it in your project. The header can only be included once.
 
 #### Use CMake
 
@@ -88,39 +91,33 @@ python scripts/run_tests.py
 ### Example
 
 ```cpp
-#include "pocketpy.h"
+#include <pybind11/pybind11.h>
 
-using namespace pkpy;
+namespace py = pybind11;
 
-int main(){
-    // Create a virtual machine
-    VM* vm = new VM();
+int main() {
+    // Start the interpreter
+    py::scoped_interpreter guard{};
 
     // Hello world!
-    vm->exec("print('Hello world!')");
+    py::exec("print('Hello world!')");
 
     // Create a list
-    vm->exec("a = [1, 2, 3]");
+    py::exec("a = [1, 2, 3]");
 
     // Eval the sum of the list
-    PyObject* result = vm->eval("sum(a)");
-    std::cout << "Sum of the list: "<< py_cast<int>(vm, result) << std::endl;   // 6
+    auto result = py::eval("sum(a)");
+    std::cout << "Sum of the list: " << result.cast<int>() << std::endl;  // 6
 
     // Bindings
-    vm->bind(vm->_main, "add(a: int, b: int)",
-      [](VM* vm, ArgsView args){
-        int a = py_cast<int>(vm, args[0]);
-        int b = py_cast<int>(vm, args[1]);
-        return py_var(vm, a + b);
-      });
+    auto m = py::module_::__main__();
+    m.def("add", [](int a, int b) {
+        return a + b;
+    });
 
     // Call the function
-    PyObject* f_add = vm->_main->attr("add");
-    result = vm->call(f_add, py_var(vm, 3), py_var(vm, 7));
-    std::cout << "Sum of 2 variables: "<< py_cast<int>(vm, result) << std::endl;   // 10
+    std::cout << "Sum of 2 variables: " << m.attr("add")(1, 2).cast<int>() << std::endl;  // 10
 
-    // Dispose the virtual machine
-    delete vm;
     return 0;
 }
 ```

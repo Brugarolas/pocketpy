@@ -31,10 +31,14 @@ struct SourceData {
 
     Str source;
     pod_vector<const char*> line_starts;
+
+    bool is_precompiled;
+    std::vector<Str> _precompiled_tokens;
     
     SourceData(std::string_view source, const Str& filename, CompileMode mode);
     SourceData(const Str& filename, CompileMode mode);
     std::pair<const char*,const char*> _get_line(int lineno) const;
+    std::string_view get_line(int lineno) const;
     Str snapshot(int lineno, const char* cursor, std::string_view name) const;
 };
 
@@ -58,12 +62,12 @@ struct Exception {
     int _ip_on_error;
     void* _code_on_error;
 
-    PyObject* _self;    // weak reference
+    PyVar _self;    // weak reference
     
     stack<ExceptionLine> stacktrace;
     Exception(StrName type): type(type), is_re(true), _ip_on_error(-1), _code_on_error(nullptr), _self(nullptr) {}
 
-    PyObject* self() const{
+    PyVar self() const{
         PK_ASSERT(_self != nullptr);
         return _self;
     }
